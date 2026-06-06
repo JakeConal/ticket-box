@@ -5,15 +5,27 @@ An authenticated user with the CHECKER role SHALL be able to scan a QR code usin
 
 #### Scenario: Valid QR code scanned while online
 - **WHEN** a CHECKER scans a valid, unused QR e-ticket while connected to the network
-- **THEN** the app displays a green "VALID — [Ticket Type] [Name]" result within 1 second and the backend marks the ticket as checked-in
+- **THEN** the app verifies the JWT signature locally, synchronously calls `POST /checkins/{ticketId}`, waits for the backend response, and only upon receiving HTTP 200 writes the check-in to local SQLite with status SYNCED and displays a green "VALID — [Ticket Type] [Name]" result within 1 second
+
+#### Scenario: Ticket already checked in by another gate — detected online
+- **WHEN** a CHECKER scans a valid QR code while online but the backend returns HTTP 409 (already checked in by another device)
+- **THEN** the app writes the record to local SQLite with status CONFLICT and displays a red "ALREADY USED — Checked in at [timestamp]" result; the attendee is not admitted
+
+#### Scenario: Network drops during online check-in call — fallback to offline path
+- **WHEN** a CHECKER scans a valid QR code while online, but the backend call times out or the connection is lost before a response is received
+- **THEN** the app writes the check-in to local SQLite with status PENDING_SYNC, displays a green "VALID (offline fallback)" result, and syncs to the backend when connectivity is restored
+
+#### Scenario: Online check-in recorded locally prevents same-device duplicate after going offline
+- **WHEN** a CHECKER scans a valid QR code while online, the backend confirms with HTTP 200, and the device subsequently loses network connectivity
+- **THEN** any re-scan of the same ticket on the same device is rejected locally with "ALREADY USED" — the SYNCED record in local SQLite is the guard, not the network
 
 #### Scenario: Invalid or tampered QR code scanned
 - **WHEN** a CHECKER scans a QR code with an invalid JWT signature
 - **THEN** the app displays a red "INVALID — Tampered or unrecognized ticket" result
 
-#### Scenario: Already-checked-in ticket scanned
-- **WHEN** a CHECKER scans a QR code for a ticket that is already marked as checked-in
-- **THEN** the app displays a red "ALREADY USED — Checked in at [timestamp]" result
+#### Scenario: Already-checked-in ticket scanned (detected locally)
+- **WHEN** a CHECKER scans a QR code for a ticket already present in local SQLite (status SYNCED, PENDING_SYNC, or CONFLICT)
+- **THEN** the app displays a red "ALREADY USED — Checked in at [timestamp]" result without making a backend call
 
 ### Requirement: Check-in operates correctly without network connectivity
 The checker mobile app SHALL record check-ins locally and provide pass/fail decisions when the backend is unreachable.
@@ -39,18 +51,45 @@ The backend SHALL process batched offline check-ins without creating duplicate r
 
 #### Scenario: Batch sync with duplicate ticket
 - **WHEN** the checker app sends a batch containing a ticket ID already marked as checked-in by another device
-- **THEN** the backend rejects the duplicate entry, returns the existing check-in timestamp, and the app marks that local record as CONFLICT without overwriting the server state
+- **THEN** the backend rejects the duplicate entry, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, attempted timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
+
+#### Scenario: Conflict audit trail is preserved for post-event review
+- **WHEN** a conflict is recorded during batch sync
+- **THEN** an ORGANIZER can view all conflict attempts for their concert via the admin dashboard, including which ticket was involved, which device attempted the duplicate scan, and the time difference between the original and duplicate scan — enabling post-event fraud investigation
 
 #### Scenario: No check-in data lost on app restart during offline period
 - **WHEN** the checker app is closed and reopened while offline
 - **THEN** all previously recorded PENDING_SYNC check-ins are preserved in local SQLite and included in the next sync attempt
+
+### Requirement: VIP guests can be admitted via identity lookup
+An authenticated CHECKER SHALL be able to search for a VIP guest by name or phone number and mark them as admitted. VIP guest lookup requires network connectivity; the VIP entrance is an organizer responsibility to keep connected.
+
+#### Scenario: VIP guest found by phone number and admitted
+- **WHEN** a CHECKER searches by phone number and a matching VIP guest record is found with `entered = false`
+- **THEN** the backend returns the guest record, the CHECKER confirms the identity visually, submits `POST /checkin/vip/{vip_id}`, and the system sets `entered = true` with server timestamp; the app displays "ADMITTED — [Guest Name]"
+
+#### Scenario: VIP guest found by name with multiple matches
+- **WHEN** a CHECKER searches by name and multiple records match
+- **THEN** the app displays the list of matches (name + partial phone) for the CHECKER to disambiguate; the CHECKER selects the correct record before submitting admission
+
+#### Scenario: VIP guest already admitted
+- **WHEN** a CHECKER attempts to admit a VIP guest whose record already has `entered = true`
+- **THEN** the backend returns HTTP 409 and the app displays "ALREADY ADMITTED — Entered at [timestamp]"; the guest is not admitted again
+
+#### Scenario: Person not found on VIP guest list
+- **WHEN** a CHECKER searches by name or phone and no matching record exists for the concert
+- **THEN** the app displays "NOT ON GUEST LIST — Contact organizer" and does not admit the person
+
+#### Scenario: VIP lookup attempted without network connectivity
+- **WHEN** a CHECKER attempts to search for a VIP guest while the device has no network connection
+- **THEN** the app displays "No connection — VIP lookup requires network; please restore connectivity or contact the organizer" and does not admit the person; VIP entrances are expected to maintain connectivity as an operational requirement
 
 ### Requirement: Checker app requires authentication
 The checker mobile app SHALL require a valid CHECKER-role JWT to access QR scanning functionality.
 
 #### Scenario: Checker accesses app with valid credentials
 - **WHEN** a CHECKER logs in with valid credentials
-- **THEN** the app loads the QR scanner and pre-downloads the signing public key for offline validation
+- **THEN** the app loads the QR scanner and pre-downloads the HMAC signing key for offline JWT verification; the key is stored in device secure storage (Keychain on iOS, Keystore on Android)
 
 #### Scenario: AUDIENCE user attempts to access checker app
 - **WHEN** a user with AUDIENCE role authenticates into the checker app

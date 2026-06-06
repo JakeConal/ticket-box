@@ -125,6 +125,8 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 
 **Rationale:** Check-in is append-only (a ticket is either checked-in or not). Last-write-wins is safe because duplicate check-ins are detected by `ticket_id` uniqueness constraint on backend. The one-way nature (ticket can only transition to checked-in, never back) eliminates merge conflicts.
 
+**Implementation note — SQLite as universal scan log:** The local SQLite `checkins` table is not merely an offline buffer; it is the authoritative scan log for this device regardless of connectivity. All scans — online and offline — write to SQLite first before any backend call is made. This ensures that if the device transitions from online to offline mid-session, already-scanned tickets are still rejected locally without requiring a network check. Local records carry one of three statuses: `SYNCED` (backend confirmed), `PENDING_SYNC` (awaiting sync), or `CONFLICT` (backend rejected — already admitted by another device). All three statuses block re-entry on this device.
+
 ---
 
 ### D10 — Caching: Cache-Aside with Redis, Two-Tier TTL

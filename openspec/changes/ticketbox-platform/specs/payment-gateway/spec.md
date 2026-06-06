@@ -16,7 +16,7 @@ The system SHALL process the payment gateway's callback (webhook or redirect) to
 
 #### Scenario: Successful payment callback
 - **WHEN** the payment gateway sends a successful payment notification
-- **THEN** the system verifies the gateway signature, marks the order as PAID, decrements inventory, and triggers e-ticket generation and notification
+- **THEN** the system verifies the gateway signature, marks the order as PAID, and triggers e-ticket generation and notification — inventory was already decremented at order creation and requires no further change
 
 #### Scenario: Failed payment callback
 - **WHEN** the payment gateway sends a failed or cancelled payment notification
@@ -57,12 +57,24 @@ The system SHALL use a circuit breaker to prevent cascading failures when VNPAY 
 - **THEN** concert browsing, ticket availability queries, check-in, and admin functions continue to operate normally
 
 ### Requirement: Payment timeout is handled without double-charging
-The system SHALL handle payment timeout scenarios where the gateway response is not received within the expected window.
+The system SHALL distinguish between two distinct timeout scenarios: failure before the user pays (URL creation timeout) and failure after the user pays (webhook delivery timeout). Each is handled differently.
 
-#### Scenario: Gateway call times out
-- **WHEN** the payment gateway does not respond within the configured timeout (10 seconds)
-- **THEN** the system marks the order as PENDING_CONFIRMATION, does not decrement inventory yet, and waits for the gateway webhook to reconcile
+#### Scenario: Payment URL creation times out (user has not yet paid)
+- **WHEN** the backend call to the gateway to create a payment session does not respond within the configured timeout (10 seconds)
+- **THEN** the system marks the order as FAILED, restores inventory (remaining += quantity), and returns HTTP 503 to the client — the client never received a payment URL so the user was never redirected and has definitely not been charged; they must start a new purchase attempt
 
-#### Scenario: Order reconciled via webhook after timeout
-- **WHEN** the payment gateway sends a delayed webhook confirming the payment after a prior timeout
-- **THEN** the system processes the webhook, marks the order as PAID, and triggers e-ticket delivery — no duplicate charge occurs
+#### Scenario: Webhook delivery times out (user may have already paid)
+- **WHEN** the user was successfully redirected to the gateway, completed payment on the gateway's page, but the gateway's webhook notification does not reach the backend within the expected window
+- **THEN** the system marks the order as PENDING_CONFIRMATION and does NOT restore inventory — the user may have been charged and the seat must remain reserved until the true outcome is known
+
+#### Scenario: Order reconciled via webhook after delivery timeout — payment succeeded
+- **WHEN** the payment gateway sends a delayed webhook confirming successful payment for a PENDING_CONFIRMATION order
+- **THEN** the system verifies the signature, marks the order as PAID, and triggers e-ticket generation and notification — inventory remains decremented (correct), no duplicate charge occurs
+
+#### Scenario: Order reconciled via webhook after delivery timeout — payment failed
+- **WHEN** the payment gateway sends a delayed webhook confirming payment failure for a PENDING_CONFIRMATION order
+- **THEN** the system marks the order as FAILED and restores inventory (remaining += quantity) so the seats become available again
+
+#### Scenario: No webhook received within expiry window
+- **WHEN** an order remains in PENDING_CONFIRMATION status for more than 15 minutes with no webhook received
+- **THEN** the background expiry job marks the order as EXPIRED and restores inventory — the user must contact support or start a new purchase attempt
