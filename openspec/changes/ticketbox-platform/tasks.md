@@ -32,7 +32,8 @@
 - [ ] 3.5 Configure Spring Security 7 filter chain (lambda DSL): JWT validation filter, role-based `@PreAuthorize` on controllers
 - [ ] 3.6 Implement `JwtUtil` service: generate signed JWT (HMAC-SHA256), parse and validate, extract claims (userId, role)
 - [ ] 3.7 Add seed script / SQL insert for initial ORGANIZER and CHECKER accounts (used for testing)
-- [ ] 3.8 Write integration tests: register → login → access protected endpoint → refresh → revoke
+- [ ] 3.8 Implement ownership enforcement for ORGANIZER actions: beyond the role check, verify server-side that the organizer owns the target concert (edit/cancel concert, ticket types, PDF upload, bio review/publish/reject, revenue/orders); return 403 on cross-organizer access
+- [ ] 3.9 Write integration tests: register → login → access protected endpoint → refresh → revoke; plus an ORGANIZER receiving 403 when acting on another organizer's concert
 
 ## 4. Concert Management
 

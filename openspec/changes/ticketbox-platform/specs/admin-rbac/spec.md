@@ -9,7 +9,7 @@ The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — eac
 
 #### Scenario: ORGANIZER role permissions
 - **WHEN** a user with ORGANIZER role is authenticated
-- **THEN** the system allows: all AUDIENCE permissions plus create/edit/cancel concerts, configure ticket types, upload artist PDFs, view revenue statistics, view all orders for their concerts; and denies: access to QR scanner
+- **THEN** the system allows: all AUDIENCE permissions plus create/edit/cancel concerts, configure ticket types, upload artist PDFs, review/edit/publish/reject AI-generated artist bio drafts, view revenue statistics, view all orders for their concerts; and denies: access to QR scanner
 
 #### Scenario: CHECKER role permissions
 - **WHEN** a user with CHECKER role is authenticated
@@ -29,6 +29,21 @@ The system SHALL include the user's role in the JWT access token and validate it
 #### Scenario: Missing or expired JWT
 - **WHEN** a request arrives without a JWT, or with an expired JWT
 - **THEN** the system returns HTTP 401 Unauthorized
+
+### Requirement: ORGANIZER actions are scoped to concerts they own
+Authorization for organizer write and publish actions SHALL combine the role check with an ownership check: holding the ORGANIZER role is necessary but not sufficient — the organizer must also own the target concert. This applies to editing/cancelling concerts, configuring ticket types, uploading PDFs, reviewing/editing/publishing/rejecting artist bios, and viewing revenue and orders.
+
+#### Scenario: Organizer acts on their own concert
+- **WHEN** an ORGANIZER performs a write or publish action (e.g. publish an artist bio, edit ticket types) on a concert they created
+- **THEN** the role check and the ownership check both pass and the action proceeds
+
+#### Scenario: Organizer attempts to act on another organizer's concert
+- **WHEN** an ORGANIZER attempts a write, publish, or revenue/order-read action on a concert owned by a different organizer
+- **THEN** the system returns HTTP 403 Forbidden even though the role is ORGANIZER — the ownership check fails
+
+#### Scenario: Ownership is enforced server-side, not by hidden UI
+- **WHEN** an ORGANIZER crafts a direct API request targeting a concert they do not own
+- **THEN** the system rejects it with HTTP 403 based on server-side ownership verification, independent of what the admin UI exposes
 
 ### Requirement: Admin dashboard is accessible only to ORGANIZERs
 The admin web interface SHALL be restricted to users with the ORGANIZER role.
