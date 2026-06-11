@@ -13,6 +13,7 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - Add scheduled one-way CSV import for VIP guest lists from brand sponsors
 - Implement Redis-based caching for high-read endpoints (concert listing, concert detail)
 - Implement rate limiting (Token Bucket) at the API gateway layer
+- Add a FIFO virtual waiting queue (Redis-backed) that meters access to the purchase path during sale-open spikes — fairness by arrival order instead of 429 retry lotteries
 - Add an extensible notification system (email + in-app, pluggable for Zalo OA / SMS)
 
 ## Capabilities
@@ -27,7 +28,7 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - `admin-rbac`: Three roles — Audience (browse + buy), Organizer (full concert CRUD + revenue stats), Checker (QR scan only); JWT-based auth; middleware enforcement on every API endpoint and admin page
 - `ai-artist-bio`: Organizer uploads PDF press kit; system extracts and cleans text; calls AI model (Google Gemini API, free tier) to generate short bio; bio displayed on concert detail page
 - `vip-guest-csv`: Scheduled nightly import of CSV files from brand sponsor; idempotent upsert with duplicate detection; error-tolerant parsing; checker staff can verify VIP guests at gate
-- `rate-limiting`: Token Bucket algorithm enforced at API gateway; configurable per-endpoint thresholds; returns 429 with Retry-After; protects backend from 80k-user spikes
+- `rate-limiting`: Token Bucket algorithm enforced at API gateway; configurable per-endpoint thresholds; returns 429 with Retry-After; complemented by a FIFO virtual waiting queue for sale-open windows that admits users in arrival order at a rate the purchase path can serve — together they protect the backend from 80k-user spikes while preserving fairness
 - `caching`: Redis cache-aside for concert list (TTL ~5 min) and concert detail (TTL ~1 min); active invalidation of ticket count cache on each successful purchase transaction
 
 ### Modified Capabilities
@@ -36,7 +37,7 @@ _(none — this is a greenfield project)_
 
 ## Impact
 
-- **New services**: Backend API (Java Spring Boot), Web Frontend (React/Next.js), Mobile Checker App (React Native / Flutter), Redis, PostgreSQL, message broker (Redis pub/sub or RabbitMQ), AI API integration
+- **New services**: Backend API (Java Spring Boot), Web Frontend (React/Next.js), Mobile Checker App (React Native), Redis, PostgreSQL, Redis Pub/Sub as internal message broker (plus transactional outbox for must-arrive delivery), AI API integration
 - **External dependencies**: VNPAY payment gateway, MoMo payment gateway, Google Gemini API free tier (AI artist bio), SMTP / push notification provider
 - **Data**: No existing data to migrate — seed data required for 4 sample concerts with full ticket types, pricing, and seat maps
 - **Infrastructure**: Requires Docker Compose setup for local dev; Redis; PostgreSQL; optional S3-compatible storage for PDF uploads

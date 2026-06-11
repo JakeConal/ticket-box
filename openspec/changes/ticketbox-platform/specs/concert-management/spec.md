@@ -22,6 +22,25 @@ An ORGANIZER SHALL be able to define one or more ticket types for a concert, eac
 - **WHEN** an ORGANIZER sets a per-user limit greater than the ticket type's total quantity
 - **THEN** the system returns HTTP 422 and rejects the configuration
 
+### Requirement: Organizer can publish a concert to make it publicly visible
+A concert SHALL start in DRAFT status, invisible to the public, and SHALL become publicly visible only when its owning ORGANIZER explicitly publishes it. Publishing requires the concert to have at least one configured ticket type.
+
+#### Scenario: Organizer publishes a draft concert
+- **WHEN** an ORGANIZER publishes a DRAFT concert that has complete metadata and at least one ticket type
+- **THEN** the system transitions the concert to PUBLISHED, invalidates the listing cache, and the concert appears in the public listing and detail pages
+
+#### Scenario: Publish rejected without ticket types
+- **WHEN** an ORGANIZER attempts to publish a DRAFT concert that has no ticket types configured
+- **THEN** the system returns HTTP 422 and the concert remains DRAFT
+
+#### Scenario: Draft concert is not publicly accessible
+- **WHEN** an unauthenticated user (or any non-owner) requests a DRAFT concert's detail page or the public listing
+- **THEN** the DRAFT concert is excluded from the listing and its detail endpoint returns HTTP 404; only the owning ORGANIZER can see it via the admin dashboard
+
+#### Scenario: Publish attempt on a non-DRAFT concert
+- **WHEN** an ORGANIZER attempts to publish a concert already PUBLISHED or CANCELLED
+- **THEN** the system returns HTTP 409 Conflict
+
 ### Requirement: Organizer can update concert information
 An ORGANIZER SHALL be able to update a concert's metadata (name, description, venue, artist info, seat map) before the concert date.
 

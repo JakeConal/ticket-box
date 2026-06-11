@@ -24,13 +24,19 @@
                 <mxCell id="42" value="Concert Module&#xa;CRUD + SVG Seat Map" style="rounded=1;whiteSpace=wrap;fillColor=#ffd966;strokeColor=#d6b656;fontSize=10;" parent="40" vertex="1">
                     <mxGeometry x="182" y="48" width="155" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="43" value="Ticket Purchase&#xa;SELECT FOR UPDATE&#xa;Redis Counter" style="rounded=1;whiteSpace=wrap;fillColor=#ffd966;strokeColor=#d6b656;fontSize=10;" parent="40" vertex="1">
+                <mxCell id="43" value="Ticket Purchase&#xa;Atomic Conditional UPDATE&#xa;Redis Limit Counter" style="rounded=1;whiteSpace=wrap;fillColor=#ffd966;strokeColor=#d6b656;fontSize=10;" parent="40" vertex="1">
                     <mxGeometry x="354" y="48" width="155" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="600" value="Waiting Queue ✦&#xa;FIFO (Redis ZSET)&#xa;Admission Tokens" style="rounded=1;whiteSpace=wrap;fillColor=#f3e6ff;strokeColor=#9673a6;fontSize=10;fontStyle=1;" parent="40" vertex="1">
+                    <mxGeometry x="526" y="48" width="155" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="601" value="admits N/sec" style="fontSize=9;" parent="40" source="600" target="43" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="44" value="Payment Module&#xa;Circuit Breaker&#xa;Idempotency Key" style="rounded=1;whiteSpace=wrap;fillColor=#ffd966;strokeColor=#d6b656;fontSize=10;" parent="40" vertex="1">
                     <mxGeometry x="692" y="159" width="155" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="300" value="QR Token ✦&#xa;HMAC-SHA256 Sign&#xa;JWT Verify" style="rounded=1;whiteSpace=wrap;fillColor=#ffff88;strokeColor=#d6b656;fontSize=10;fontStyle=1;" parent="40" vertex="1">
+                <mxCell id="300" value="QR Token ✦&#xa;EdDSA Sign (private key)&#xa;Offline Public-key Verify" style="rounded=1;whiteSpace=wrap;fillColor=#ffff88;strokeColor=#d6b656;fontSize=10;fontStyle=1;" parent="40" vertex="1">
                     <mxGeometry x="515.5" y="269" width="155" height="55" as="geometry"/>
                 </mxCell>
                 <mxCell id="45" value="Check-in Module&#xa;Online Scan (sync)&#xa;Batch Sync + Conflicts" style="rounded=1;whiteSpace=wrap;fillColor=#ffd966;strokeColor=#d6b656;fontSize=10;" parent="40" vertex="1">
@@ -175,10 +181,10 @@
                 <mxCell id="531" value="Data Layer" style="swimlane;startSize=34;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
                     <mxGeometry x="1107" y="210" width="350" height="530" as="geometry"/>
                 </mxCell>
-                <mxCell id="51" value="Redis 7&#xa;Cache-aside · Rate Limiting&#xa;Idempotency Keys · Pub/Sub" style="shape=cylinder3;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;verticalLabelPosition=middle;verticalAlign=middle;fontSize=11;" parent="531" vertex="1">
+                <mxCell id="51" value="Redis 7&#xa;Cache-aside · Rate Limiting&#xa;Waiting Queue · Idempotency · Pub/Sub" style="shape=cylinder3;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;verticalLabelPosition=middle;verticalAlign=middle;fontSize=11;" parent="531" vertex="1">
                     <mxGeometry x="60" y="229" width="230" height="90" as="geometry"/>
                 </mxCell>
-                <mxCell id="50" value="PostgreSQL 16&#xa;Concerts · Orders · Tickets&#xa;Users · Check-ins · Conflicts · VIP Guests" style="shape=cylinder3;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;verticalLabelPosition=middle;verticalAlign=middle;fontSize=11;" parent="531" vertex="1">
+                <mxCell id="50" value="PostgreSQL 16&#xa;Concerts · Orders · Tickets · Outbox&#xa;Users · Check-ins · Idempotency · VIP Guests" style="shape=cylinder3;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;verticalLabelPosition=middle;verticalAlign=middle;fontSize=11;" parent="531" vertex="1">
                     <mxGeometry x="60" y="376" width="230" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="526" value="SQLite&#xa;Local DB · Offline Check-in" style="shape=cylinder3;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;verticalLabelPosition=middle;verticalAlign=middle;fontSize=11;" parent="1" vertex="1">

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Authenticated user can purchase tickets
-An authenticated AUDIENCE user SHALL be able to select a ticket type and quantity, proceed to payment, and receive a QR e-ticket upon successful payment.
+An authenticated user (AUDIENCE role; ORGANIZER inherits audience permissions per admin-rbac) SHALL be able to select a ticket type and quantity, proceed to payment, and receive a QR e-ticket upon successful payment.
 
 #### Scenario: Successful purchase end-to-end
 - **WHEN** an authenticated user selects 2 CAT1 tickets, completes payment via VNPAY, and the gateway confirms payment

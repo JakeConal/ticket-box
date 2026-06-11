@@ -83,6 +83,21 @@ The system SHALL distinguish between two distinct timeout scenarios: failure bef
 - **WHEN** the payment gateway sends a delayed webhook confirming payment failure for a PENDING_CONFIRMATION order
 - **THEN** the system marks the order as FAILED and restores inventory (remaining += quantity) so the seats become available again
 
-#### Scenario: No webhook received within expiry window
-- **WHEN** an order remains in PENDING_CONFIRMATION status for more than 15 minutes with no webhook received
-- **THEN** the background expiry job marks the order as EXPIRED and restores inventory — the user must contact support or start a new purchase attempt
+#### Scenario: Gateway is actively queried before expiring an unconfirmed order
+- **WHEN** an order has remained in PENDING_CONFIRMATION for more than 15 minutes with no webhook received
+- **THEN** before expiring it, the background job queries the gateway's transaction-status API (VNPAY query / MoMo transaction query); if the gateway reports a successful charge the order is marked PAID (inventory stays reserved, e-tickets issued); only if the gateway reports failure or no transaction is the order marked EXPIRED and inventory restored
+
+#### Scenario: No webhook received and gateway query is inconclusive
+- **WHEN** an order remains in PENDING_CONFIRMATION past the expiry window and the gateway status query fails or returns no transaction
+- **THEN** the background expiry job marks the order as EXPIRED and restores inventory — the user must start a new purchase attempt
+
+### Requirement: Late payment confirmation for an expired order results in a refund, never a re-granted seat
+If a successful payment is confirmed (by webhook or status query) for an order that has already been EXPIRED, the system SHALL NOT re-grant the inventory — the seats were released and may have been resold — and SHALL route the order to a refund path instead.
+
+#### Scenario: Success webhook arrives for an already-EXPIRED order
+- **WHEN** the gateway delivers a valid, signature-verified success webhook for an order in EXPIRED status
+- **THEN** the system marks the order REFUND_REQUIRED (it does not restore or re-decrement inventory and does not issue e-tickets), notifies the user that their payment will be refunded, and surfaces the order in the organizer/admin dashboard for refund handling
+
+#### Scenario: Refund execution is manual and out-of-band
+- **WHEN** an order is in REFUND_REQUIRED status
+- **THEN** the actual money movement is performed manually by the organizer through the gateway's merchant portal (automated refund API integration is out of scope); once done, the organizer marks the order REFUNDED in the admin dashboard for audit

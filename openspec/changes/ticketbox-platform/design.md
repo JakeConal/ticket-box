@@ -20,6 +20,7 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 - Full seat-by-seat seating (zone-level only: GA, SVIP, VIP, CAT1, CAT2)
 - Real-time secondary ticket market or resale
 - Multi-language i18n beyond Vietnamese/English
+- Automated refund processing — orders that end up charged-but-unfulfilled (late payment confirmation after expiry, cancelled concerts with paid ticket holders) are marked `REFUND_REQUIRED` and surfaced in the admin dashboard; the actual money movement is performed manually via the gateway's merchant portal, and the organizer records the outcome (`REFUNDED`) for audit. No gateway refund-API integration in this project.
 
 ## Decisions
 
@@ -77,7 +78,7 @@ Order states and their inventory effect:
 - `PAID` → reserved permanently.
 - `FAILED` / `EXPIRED` → released (`remaining += q`).
 
-The background expiry job (D11 scheduler) scans for stale `PENDING` and `PENDING_CONFIRMATION` orders and releases their inventory. Without this, a few thousand abandoned checkouts would lock all 200 SVIP seats within seconds even though nobody paid.
+The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING` and `PENDING_CONFIRMATION` orders and releases their inventory. Without this, a few thousand abandoned checkouts would lock all 200 SVIP seats within seconds even though nobody paid.
 
 **Alternatives considered:**
 - *`SELECT FOR UPDATE` then decrement*: Correct but holds a lock across read+write; the conditional UPDATE achieves the same guarantee in one statement with shorter lock hold time. `SKIP LOCKED` remains useful for the expiry job to claim stale orders without contending with live purchases.
@@ -216,7 +217,7 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 ### D12 — VIP Guest CSV Import: Scheduled Job with Idempotent Upsert
 
-**Decision:** Spring `@Scheduled` job runs nightly at 02:00 (configurable), with an organizer-triggered manual import on the admin dashboard as a safety valve for late files. Reads CSV from a watched directory (or S3 bucket mount). Parses rows with Jakarta CSV; skips malformed rows with a structured error log. Upserts into `vip_guests` on the **`(concert_id, phone_normalized)`** unique key — duplicates update instead of insert. Job runs in a separate transaction; failures do not affect live traffic.
+**Decision:** Spring `@Scheduled` job runs nightly at 02:00 (configurable), with an organizer-triggered manual import on the admin dashboard as a safety valve for late files. Reads CSV from a watched directory (or S3 bucket mount). Parses rows with OpenCSV; skips malformed rows with a structured error log. Upserts into `vip_guests` on the **`(concert_id, phone_normalized)`** unique key — duplicates update instead of insert. Job runs in a separate transaction; failures do not affect live traffic.
 
 **Idempotency anchor — normalized phone, not name:** The upsert key is `(concert_id, phone_normalized)`; `name` is deliberately *excluded*. Name is mutable display data (accent/spelling variants like "Nguyễn Văn A" vs "Nguyen Van A" arrive across nightly files) — keying on it would create duplicate guest rows for the same person. Phone is the stable identity. The phone normalizer (strip spaces/dashes, resolve `0` ↔ `+84` prefix to one canonical form) is therefore load-bearing for idempotency and is unit-tested. Phone is a required column; rows without it are skipped.
 
@@ -262,7 +263,9 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 - **Offline check-in clock skew** → Mobile device time may differ from server time, affecting timestamp ordering. Mitigation: server timestamp is authoritative for `checked_in_at`; device timestamp is stored separately for audit only.
 
-- **Circuit breaker hides partial payment success** → Gateway charged user but timeout before response → circuit opens → user sees error but was charged. Mitigation: idempotency key ensures retry returns same result; webhook from VNPAY/MoMo reconciles async; order marked `PENDING_CONFIRMATION` until webhook arrives.
+- **Circuit breaker hides partial payment success** → Gateway charged user but timeout before response → circuit opens → user sees error but was charged. Mitigation: idempotency key ensures retry returns same result; webhook from VNPAY/MoMo reconciles async; order marked `PENDING_CONFIRMATION` until webhook arrives. Before expiring a `PENDING_CONFIRMATION` order, the expiry job actively queries the gateway's transaction-status API, shrinking the charged-but-expired window to genuine gateway outages.
+
+- **Late payment confirmation after expiry** → if a success webhook (or query result) arrives for an order already `EXPIRED`, the released seats may have been resold, so inventory is never re-granted. The order is marked `REFUND_REQUIRED`, the user is notified, and the organizer handles the refund manually (see Non-Goals). This trades a rare manual refund for never overselling a seat.
 
 - **PDF text extraction quality** → Scanned PDFs or image-only press kits yield no extractable text. Mitigation: validate extracted text length before calling the Gemini API; surface error to Organizer with "Text extraction failed — please upload a text-based PDF."
 
@@ -285,7 +288,7 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 - Gradle Groovy DSL is familiar, concise, and well-supported by the Spring Boot Gradle plugin.
 
 **Compatibility notes:**
-- Verify all third-party dependencies (Resilience4j, Apache PDFBox, jjwt, Jakarta CSV) against the Spring Boot 4 BOM before locking versions.
+- Verify all third-party dependencies (Resilience4j, Apache PDFBox, jjwt, OpenCSV) against the Spring Boot 4 BOM before locking versions.
 - Spring Boot 4 requires Java 17 minimum; Java 25 is forward-compatible.
 - Spring Security 7 (bundled with SB4) changes some configuration APIs — security config must use the lambda DSL, not deprecated `WebSecurityConfigurerAdapter`.
 
