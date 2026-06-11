@@ -61,6 +61,10 @@ The backend SHALL process batched offline check-ins without creating duplicate r
 - **WHEN** the checker app is closed and reopened while offline
 - **THEN** all previously recorded PENDING_SYNC check-ins are preserved in local SQLite and included in the next sync attempt
 
+#### Scenario: Same ticket scanned on two simultaneously-offline devices (guarantee boundary)
+- **WHEN** two checker devices are both offline and each scans the same ticket during the offline window
+- **THEN** each device admits the holder locally (the no-double-entry guarantee is per-device always, global only on sync); when both devices later sync, the backend admits the first and records the second in `checkin_conflicts`, marking that device's local record CONFLICT — the residual double-admission window is inherent to offline multi-device operation and is mitigated operationally by single-gate assignment per ticket
+
 ### Requirement: VIP guests can be admitted via identity lookup
 An authenticated CHECKER SHALL be able to search for a VIP guest by name or phone number and mark them as admitted. VIP guest lookup requires network connectivity; the VIP entrance is an organizer responsibility to keep connected.
 
@@ -89,7 +93,7 @@ The checker mobile app SHALL require a valid CHECKER-role JWT to access QR scann
 
 #### Scenario: Checker accesses app with valid credentials
 - **WHEN** a CHECKER logs in with valid credentials
-- **THEN** the app loads the QR scanner and pre-downloads the HMAC signing key for offline JWT verification; the key is stored in device secure storage (Keychain on iOS, Keystore on Android)
+- **THEN** the app loads the QR scanner and pre-downloads the **public** verification key(s) for offline JWT signature verification (asymmetric — EdDSA/RS256, keyed by JWT `kid`); the app never receives the private signing key, so a compromised device cannot forge tickets. The public key bundle is stored in device secure storage (Keychain on iOS, Keystore on Android)
 
 #### Scenario: AUDIENCE user attempts to access checker app
 - **WHEN** a user with AUDIENCE role authenticates into the checker app

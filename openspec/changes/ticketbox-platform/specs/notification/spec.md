@@ -15,6 +15,14 @@ After a successful ticket purchase, the system SHALL send a confirmation notific
 - **WHEN** the email provider is unavailable at the time of sending
 - **THEN** the system retries the notification up to 3 times with exponential backoff; the order remains PAID regardless of notification outcome
 
+#### Scenario: E-ticket delivery survives a process crash (must-arrive via outbox)
+- **WHEN** an order transitions to PAID
+- **THEN** the e-ticket notification intent is written to a transactional outbox in the same database transaction that marks the order PAID; a worker delivers it with retry until acknowledged, so the e-ticket is not lost even if the application process crashes between commit and send — the persisted QR on the order also remains retrievable in-app as a backstop
+
+#### Scenario: Best-effort notifications use lightweight dispatch
+- **WHEN** a best-effort notification (in-app toast, 24h reminder) is dispatched
+- **THEN** the system MAY use fire-and-forget Pub/Sub without the durable outbox guarantee, since loss of one such message is acceptable; only must-arrive notifications (e-ticket delivery) require the outbox
+
 ### Requirement: System sends 24-hour pre-event reminder
 The system SHALL automatically send a reminder notification to all ticket holders 24 hours before the concert starts.
 

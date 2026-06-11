@@ -3,17 +3,17 @@
 - [ ] 1.1 Initialize Spring Boot 4 project with Gradle Groovy DSL (Java 25, Spring Web, Spring Security, Spring Data JPA, Spring Mail, Spring Scheduling)
 - [ ] 1.2 Create `docker-compose.yml` with services: `api`, `postgres`, `redis`, `nginx`
 - [ ] 1.3 Configure `application.yml` with profiles: `dev`, `test`; wire PostgreSQL and Redis connection properties
-- [ ] 1.4 Add core Gradle dependencies: Resilience4j, jjwt, Apache PDFBox, OpenCSV, Anthropic Java SDK (or HTTP client for Claude API)
+- [ ] 1.4 Add core Gradle dependencies: Resilience4j, jjwt, Apache PDFBox, OpenCSV, Google Gen AI Java SDK (or HTTP client for the Gemini REST API)
 - [ ] 1.5 Initialize React/Next.js frontend project (`ticketbox-web`) with TypeScript and Tailwind CSS
 - [ ] 1.6 Initialize React Native project (`ticketbox-checker`) for the mobile check-in app
 - [ ] 1.7 Set up Nginx reverse proxy config: route `/api/**` → Spring Boot, `/` → Next.js
-- [ ] 1.8 Add `.env.example` documenting all required environment variables (DB URL, Redis URL, JWT secret, VNPAY/MoMo keys, Claude API key, SMTP config)
+- [ ] 1.8 Add `.env.example` documenting all required environment variables (DB URL, Redis URL, JWT secret, VNPAY/MoMo keys, Gemini API key, SMTP config)
 
 ## 2. Database Schema & Migrations
 
 - [ ] 2.1 Create Flyway (or Liquibase) migration: `users` table (`id`, `email`, `password_hash`, `role`, `created_at`)
 - [ ] 2.2 Create migration: `refresh_tokens` table (`id`, `user_id`, `token_hash`, `expires_at`, `revoked`)
-- [ ] 2.3 Create migration: `concerts` table (`id`, `name`, `description`, `venue`, `event_date`, `status`, `artist_bio`, `bio_status`, `seat_map_svg`, `created_by`)
+- [ ] 2.3 Create migration: `concerts` table (`id`, `name`, `description`, `venue`, `event_date`, `status`, `artist_bio`, `bio_status` [GENERATING/DRAFT/PUBLISHED/FAILED], `bio_generation_id` [version token for concurrent regeneration], `seat_map_svg`, `created_by`)
 - [ ] 2.4 Create migration: `ticket_types` table (`id`, `concert_id`, `name`, `zone`, `price`, `total_quantity`, `remaining_quantity`, `sale_opens_at`, `per_user_limit`)
 - [ ] 2.5 Create migration: `orders` table (`id`, `user_id`, `concert_id`, `status`, `idempotency_key`, `payment_provider`, `payment_ref`, `created_at`, `paid_at`)
 - [ ] 2.6 Create migration: `order_items` table (`id`, `order_id`, `ticket_type_id`, `quantity`)
@@ -121,14 +121,17 @@
 
 ## 12. AI Artist Bio
 
-- [ ] 12.1 Implement `POST /api/admin/concerts/{id}/artist-pdf` — ORGANIZER only; accept PDF ≤ 20MB; store file; set `bio_status = GENERATING`; return 202
-- [ ] 12.2 Implement `ArtistBioProcessor` `@Async` service: extract text using Apache PDFBox
+- [ ] 12.1 Implement `POST /api/admin/concerts/{id}/artist-pdf` — ORGANIZER only; validate real PDF by magic bytes (not extension/Content-Type); reject encrypted/protected PDFs; accept ≤ 20MB; store file; stamp an increasing `bio_generation_id`; set `bio_status = GENERATING`; return 202
+- [ ] 12.2 Implement `ArtistBioProcessor` `@Async` service: extract text using Apache PDFBox bounded by an extraction timeout and page/char ceiling (defuse decompression-bomb PDFs)
 - [ ] 12.3 In `ArtistBioProcessor`: validate extracted text length (≥ 50 chars); on failure, set `bio_status = FAILED` with reason
-- [ ] 12.4 Implement Claude API call: send cleaned text with structured prompt ("Generate a concise artist bio for a concert page..."); parse response
-- [ ] 12.5 On successful API response: save bio to `concerts.artist_bio`, set `bio_status = COMPLETE`; invalidate concert detail cache
-- [ ] 12.6 Implement retry: up to 2 retries on Claude API error; after all fail, set `bio_status = FAILED`
-- [ ] 12.7 Expose `bio_status` and `artist_bio` in `GET /api/concerts/{id}` response so frontend can poll / display accordingly
-- [ ] 12.8 Write test: mock Claude API; verify successful extraction sets COMPLETE; verify image-only PDF sets FAILED with correct reason
+- [ ] 12.4 Implement Gemini API call behind an `ArtistBioGenerator` interface: send cleaned text (capped to stay within free-tier token limits) with a structured prompt that delimits the press-kit text as untrusted data (prompt-injection hardening); parse response
+- [ ] 12.5 On successful API response: save generated text as `bio_status = DRAFT` (NOT public); write only if the task's `bio_generation_id` is still the latest (discard stale late completions)
+- [ ] 12.6 Implement retry: up to 2 retries on Gemini API error (including free-tier 429 quota errors) with exponential backoff; after all fail, set `bio_status = FAILED`
+- [ ] 12.7 Implement review endpoints — ORGANIZER only: `GET` draft for review, `PUT` to edit draft text, `POST .../publish` → `bio_status = PUBLISHED` + invalidate concert detail cache, `POST .../reject`
+- [ ] 12.8 Implement a scheduled reaper: transition any `GENERATING` row older than the threshold (e.g. 5 min) out of GENERATING (re-queue or FAILED) so restarts don't strand bios
+- [ ] 12.9 Rate-limit regenerations per concert/organizer so repeated uploads cannot drain the free-tier quota
+- [ ] 12.10 Expose `bio_status` and the bio text in `GET /api/concerts/{id}` so the public page shows the bio ONLY when PUBLISHED (placeholder otherwise); admin endpoint exposes DRAFT for review
+- [ ] 12.11 Write tests: mock the Gemini API; verify success sets DRAFT (not public); image-only PDF sets FAILED; 429 sets FAILED "AI service busy"; non-PDF-by-magic-bytes rejected; stale late completion is discarded; reaper clears a stuck GENERATING row; only PUBLISHED bio appears on the public page
 
 ## 13. VIP Guest CSV Import
 
@@ -170,6 +173,7 @@
 - [ ] 16.3 Add sample SVG seat map for each concert (zone-colored SVG with GA, SVIP, VIP, CAT1, CAT2 regions)
 - [ ] 16.4 Add seed users: 1 ORGANIZER (`organizer@ticketbox.vn`), 2 CHECKERs (`checker1@ticketbox.vn`, `checker2@ticketbox.vn`), 3 AUDIENCE users
 - [ ] 16.5 Add sample VIP guest CSV file in `import-samples/` for testing the nightly import flow
+- [ ] 16.6 Seed each concert with a pre-written `artist_bio` and `bio_status = PUBLISHED` so concert pages show a bio out of the box — a live free-tier (Gemini) quota wall on demo day must not leave every page on the "coming soon" placeholder; the upload→draft→publish flow is still exercised separately on demand
 
 ## 17. Testing, Documentation & Final Wiring
 

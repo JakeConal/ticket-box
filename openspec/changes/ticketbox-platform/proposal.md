@@ -25,7 +25,7 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - `offline-checkin`: Mobile app scans QR codes at event gates; records check-ins locally when offline; syncs to backend when connectivity resumes; prevents duplicate entry
 - `notification`: Send purchase confirmation + e-ticket via email and in-app push; send 24h pre-event reminder; pluggable channel architecture for future Zalo OA / SMS
 - `admin-rbac`: Three roles — Audience (browse + buy), Organizer (full concert CRUD + revenue stats), Checker (QR scan only); JWT-based auth; middleware enforcement on every API endpoint and admin page
-- `ai-artist-bio`: Organizer uploads PDF press kit; system extracts and cleans text; calls AI model (Claude API) to generate short bio; bio displayed on concert detail page
+- `ai-artist-bio`: Organizer uploads PDF press kit; system extracts and cleans text; calls AI model (Google Gemini API, free tier) to generate short bio; bio displayed on concert detail page
 - `vip-guest-csv`: Scheduled nightly import of CSV files from brand sponsor; idempotent upsert with duplicate detection; error-tolerant parsing; checker staff can verify VIP guests at gate
 - `rate-limiting`: Token Bucket algorithm enforced at API gateway; configurable per-endpoint thresholds; returns 429 with Retry-After; protects backend from 80k-user spikes
 - `caching`: Redis cache-aside for concert list (TTL ~5 min) and concert detail (TTL ~1 min); active invalidation of ticket count cache on each successful purchase transaction
@@ -37,6 +37,6 @@ _(none — this is a greenfield project)_
 ## Impact
 
 - **New services**: Backend API (Java Spring Boot), Web Frontend (React/Next.js), Mobile Checker App (React Native / Flutter), Redis, PostgreSQL, message broker (Redis pub/sub or RabbitMQ), AI API integration
-- **External dependencies**: VNPAY payment gateway, MoMo payment gateway, Claude API (AI artist bio), SMTP / push notification provider
+- **External dependencies**: VNPAY payment gateway, MoMo payment gateway, Google Gemini API free tier (AI artist bio), SMTP / push notification provider
 - **Data**: No existing data to migrate — seed data required for 4 sample concerts with full ticket types, pricing, and seat maps
 - **Infrastructure**: Requires Docker Compose setup for local dev; Redis; PostgreSQL; optional S3-compatible storage for PDF uploads

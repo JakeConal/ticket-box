@@ -43,7 +43,7 @@
                 <mxCell id="14" value="&lt;b&gt;MoMo&lt;/b&gt;&lt;br&gt;[External: Payment Gateway]&lt;br&gt;&lt;br&gt;Xử lý thanh toán" style="rounded=1;arcSize=5;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#6C6C6C;strokeColor=#4A4A4A;fontColor=#ffffff;" vertex="1" parent="1">
                     <mxGeometry x="1240" y="270" width="180" height="90" as="geometry"/>
                 </mxCell>
-                <mxCell id="15" value="&lt;b&gt;Claude AI API&lt;/b&gt;&lt;br&gt;[External: AI Service]&lt;br&gt;&lt;br&gt;Sinh mô tả nghệ sĩ&lt;br&gt;từ PDF press kit" style="rounded=1;arcSize=5;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#6C6C6C;strokeColor=#4A4A4A;fontColor=#ffffff;" vertex="1" parent="1">
+                <mxCell id="15" value="&lt;b&gt;Google Gemini API&lt;/b&gt;&lt;br&gt;[External: AI Service]&lt;br&gt;&lt;br&gt;Sinh mô tả nghệ sĩ&lt;br&gt;từ PDF press kit" style="rounded=1;arcSize=5;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#6C6C6C;strokeColor=#4A4A4A;fontColor=#ffffff;" vertex="1" parent="1">
                     <mxGeometry x="1240" y="390" width="180" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="16" value="&lt;b&gt;SMTP Provider&lt;/b&gt;&lt;br&gt;[External: Email Service]&lt;br&gt;&lt;br&gt;Email xác nhận vé&lt;br&gt;và nhắc lịch concert" style="rounded=1;arcSize=5;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#6C6C6C;strokeColor=#4A4A4A;fontColor=#ffffff;" vertex="1" parent="1">

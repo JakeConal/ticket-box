@@ -37,6 +37,25 @@ The ticket purchase endpoint SHALL have a significantly lower rate limit than re
 - **WHEN** a single IP sends up to 60 requests per minute to the concert listing endpoint
 - **THEN** all requests are served (cache hits expected to handle most load)
 
+### Requirement: Sale-open spikes are absorbed by a fair waiting queue
+For sale-open windows the system SHALL provide a FIFO virtual waiting queue that meters access to the purchase path, providing fairness by arrival order rather than relying on rejection alone. Rate limiting and the queue are complementary: the queue orders and admits, the token bucket protects always-open endpoints and the admitted stream.
+
+#### Scenario: Thundering herd is metered, not rejected
+- **WHEN** tens of thousands of users arrive within the first minute of sale open
+- **THEN** users are placed in a FIFO queue and admitted at a controlled rate, each seeing their position, rather than receiving HTTP 429 and retrying
+
+#### Scenario: Queue ordering reflects arrival time
+- **WHEN** user A enqueues before user B
+- **THEN** user A is admitted to the purchase path before user B
+
+#### Scenario: Admission rate bounds inventory contention
+- **WHEN** the admission job releases users from the queue
+- **THEN** it admits at a rate tied to purchase-path capacity, bounding the number of sessions concurrently contending on the inventory row
+
+#### Scenario: Queue unavailable during Redis outage fails safe
+- **WHEN** the waiting queue backing store (Redis) is unavailable during an active sale-open window
+- **THEN** the system closes the gate (rejects new entrants) rather than admitting an unmetered herd to the purchase path
+
 ### Requirement: Rate limit state is stored atomically in Redis
 Token Bucket counters SHALL be maintained in Redis using a Lua script to ensure atomicity of check-and-consume operations.
 

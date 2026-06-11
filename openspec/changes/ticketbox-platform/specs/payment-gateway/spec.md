@@ -41,6 +41,14 @@ The system SHALL prevent a user from being charged twice for the same purchase a
 - **WHEN** a client submits a purchase request without the Idempotency-Key header
 - **THEN** the system generates and assigns an idempotency key server-side, and includes it in the response headers
 
+#### Scenario: Idempotency key persisted durably as the source of truth
+- **WHEN** a purchase request is processed with an Idempotency-Key
+- **THEN** the system records the key in a durable store (a PostgreSQL `idempotency_keys` table with a UNIQUE constraint on the key) within the purchase transaction, with Redis used only as a fast-path cache
+
+#### Scenario: Duplicate request when Redis fast-path is unavailable
+- **WHEN** two requests with the same Idempotency-Key arrive concurrently (or on retry) and the Redis cache is unavailable
+- **THEN** the durable UNIQUE constraint admits exactly one (first-writer-wins via `INSERT ... ON CONFLICT DO NOTHING`); the duplicate returns the stored result and no second payment session is created or charged
+
 ### Requirement: Circuit breaker protects against gateway failures
 The system SHALL use a circuit breaker to prevent cascading failures when VNPAY or MoMo is consistently unavailable.
 

@@ -37,12 +37,42 @@ The system SHALL ensure that concurrent purchases of the same ticket type never 
 - **WHEN** two users simultaneously attempt to purchase the last remaining SVIP ticket
 - **THEN** exactly one purchase succeeds and the other receives HTTP 409 "Tickets sold out"
 
+#### Scenario: Inventory decremented via single atomic conditional update
+- **WHEN** a purchase reserves inventory
+- **THEN** the decrement is performed by a single conditional statement (`UPDATE ticket_type SET remaining = remaining - :qty WHERE id = :id AND remaining >= :qty`); a result of zero rows affected is treated as sold out and no order is created
+
+### Requirement: Reserved inventory is released when an order is not paid
+Inventory is decremented at order creation (reserve-on-create), so the system SHALL reclaim inventory from orders that never reach PAID, ensuring abandoned checkouts do not permanently lock seats.
+
+#### Scenario: Unpaid PENDING order expires and releases inventory
+- **WHEN** an order remains in PENDING status (payment URL issued but no payment completed) for more than the reservation window (8 minutes)
+- **THEN** a background job transitions the order to EXPIRED and restores inventory (remaining += quantity) so the seats become purchasable again
+
+#### Scenario: Released order frees the buyer's per-user quota
+- **WHEN** an order transitions to FAILED or EXPIRED
+- **THEN** the system decrements the buyer's per-user limit counter for that ticket type so the released tickets no longer count against their limit; a PAID order never decrements the counter
+
+### Requirement: Sale-open access is gated by a fair waiting queue
+During a sale-open window the system SHALL admit users to the purchase path through a FIFO waiting queue rather than rejecting excess load outright, so that access order reflects arrival order.
+
+#### Scenario: User enters the waiting queue at sale open
+- **WHEN** a user arrives at the purchase flow while the queue is active
+- **THEN** the system enqueues them by arrival time, returns a queue position, and does not allow a purchase call until they hold a valid admission token
+
+#### Scenario: Admission proceeds in arrival order at a controlled rate
+- **WHEN** the admission job admits users from the front of the queue
+- **THEN** users are admitted in FIFO order at a rate bounded by purchase-path capacity, each receiving a short-lived admission token required by the purchase endpoint
+
+#### Scenario: Purchase attempt without a valid admission token
+- **WHEN** a user calls the purchase endpoint without a valid (non-expired) admission token while the queue is active
+- **THEN** the request is rejected and the user is redirected back to the waiting queue
+
 ### Requirement: User receives QR e-ticket after successful payment
 After a payment is confirmed, the system SHALL generate a unique, cryptographically-signed QR code for each purchased ticket and deliver it to the buyer.
 
 #### Scenario: E-ticket delivered after payment confirmation
 - **WHEN** payment is confirmed by the gateway webhook or redirect callback
-- **THEN** the system generates a JWT-signed QR code per ticket, stores it in the order, and sends it to the user via the notification system within 30 seconds
+- **THEN** the system generates an asymmetrically-signed (EdDSA/RS256) JWT QR code per ticket using a server-held private key, stores it in the order, and dispatches it to the user via the notification system within 30 seconds
 
 #### Scenario: QR code is unique per ticket
 - **WHEN** two users purchase tickets for the same concert

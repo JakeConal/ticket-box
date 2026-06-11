@@ -50,7 +50,7 @@ The system SHALL ensure that caching of ticket availability is used only for dis
 
 #### Scenario: Stale cache shows tickets available but DB has zero
 - **WHEN** a user sees non-zero availability from cache and attempts to purchase
-- **THEN** the purchase flow queries actual inventory from PostgreSQL with `SELECT FOR UPDATE`; if inventory is zero, the purchase is rejected with HTTP 409 regardless of what the cache showed
+- **THEN** the purchase flow enforces inventory directly in PostgreSQL via the conditional atomic decrement (`UPDATE ticket_type SET remaining = remaining - :qty WHERE id = :id AND remaining >= :qty`); if zero rows are affected the purchase is rejected with HTTP 409 regardless of what the cache showed
 
 #### Scenario: No caching on purchase or checkout endpoints
 - **WHEN** a user submits a purchase request
