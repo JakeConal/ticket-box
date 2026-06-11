@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: System enforces three distinct roles
-The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — each with a distinct, non-overlapping set of permitted actions.
+The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — each with a clearly defined set of permitted actions. ORGANIZER is a superset of AUDIENCE (an organizer may also browse and purchase); CHECKER is disjoint from both (gate operations only).
 
 #### Scenario: AUDIENCE role permissions
 - **WHEN** a user with AUDIENCE role is authenticated
