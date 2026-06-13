@@ -7,9 +7,9 @@ After a successful ticket purchase, the system SHALL send a confirmation notific
 - **WHEN** a payment is confirmed and the order transitions to PAID status
 - **THEN** the system sends an email to the buyer's registered address within 30 seconds, containing order summary and QR code image(s) for each purchased ticket
 
-#### Scenario: In-app notification sent after payment confirmed
+#### Scenario: In-app realtime notification sent after payment confirmed
 - **WHEN** a payment is confirmed and the buyer is an authenticated app session
-- **THEN** the system sends an in-app push notification with the order confirmation and a deep link to view e-tickets
+- **THEN** the system sends an in-app realtime notification over SSE/WebSocket with the order confirmation and a deep link to view e-tickets
 
 #### Scenario: Notification delivery failure does not fail the order
 - **WHEN** the email provider is unavailable at the time of sending
@@ -20,7 +20,7 @@ After a successful ticket purchase, the system SHALL send a confirmation notific
 - **THEN** the e-ticket notification intent is written to `notification_outbox` in the same database transaction that marks the order PAID; a worker retries PENDING or FAILED outbox rows until acknowledged and marked SENT, so the e-ticket is not lost even if the application process crashes between commit and send — the persisted QR in `tickets.qr_token` also remains retrievable in-app as a backstop
 
 #### Scenario: Best-effort notifications use lightweight dispatch
-- **WHEN** a best-effort notification (in-app toast, 24h reminder) is dispatched
+- **WHEN** a best-effort notification (in-app toast or 24h reminder) is dispatched
 - **THEN** the system MAY use fire-and-forget Pub/Sub without the durable outbox guarantee, since loss of one such message is acceptable; only must-arrive notifications (e-ticket delivery) require the outbox
 
 ### Requirement: System sends 24-hour pre-event reminder

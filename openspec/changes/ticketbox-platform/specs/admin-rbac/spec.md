@@ -6,7 +6,7 @@ The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — eac
 Endpoint groups:
 - AUDIENCE and ORGANIZER: `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability`, `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase`, `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets`.
 - ORGANIZER only with ownership checks: `/api/admin/concerts/**`, `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded`, `POST /api/admin/vip-imports`.
-- CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
+- CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
 - Gateway callbacks: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` are unauthenticated but signature-verified and are not user-role endpoints.
 
 #### Scenario: AUDIENCE role permissions
@@ -19,7 +19,7 @@ Endpoint groups:
 
 #### Scenario: CHECKER role permissions
 - **WHEN** a user with CHECKER role is authenticated
-- **THEN** the system allows: access QR scanner, verify VIP guests at gate; and denies: all other actions (browsing, purchasing, admin)
+- **THEN** the system allows: access QR scanner for assigned gates/zones, verify VIP guests at gate; and denies: all other actions (browsing, purchasing, admin)
 
 ### Requirement: Role is encoded in JWT and verified on every request
 The system SHALL include the user's role in the JWT access token and validate it on every protected API endpoint via middleware.

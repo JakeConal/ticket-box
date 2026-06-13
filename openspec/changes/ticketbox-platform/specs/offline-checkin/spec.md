@@ -3,11 +3,15 @@
 ### Requirement: Checker staff can scan and validate QR e-tickets at the gate
 An authenticated user with the CHECKER role SHALL be able to scan a QR code using the mobile app and receive an immediate pass/fail result.
 
-API contract: `GET /api/checker/key-bundle?concertId=X` returns public verification keys to CHECKER users; `POST /api/checkins/{ticketId}` records a single online check-in attempt and is CHECKER-only.
+API contract: `GET /api/checker/key-bundle?concertId=X` returns public verification keys to CHECKER users; `GET /api/checker/assignments?concertId=X` returns the checker's active gate/lane assignment and allowed zones for the concert; `POST /api/checkins/{ticketId}` records a single online check-in attempt and is CHECKER-only.
 
 #### Scenario: Valid QR code scanned while online
 - **WHEN** a CHECKER scans a valid, unused QR e-ticket while connected to the network
-- **THEN** the app verifies the JWT signature locally, writes the check-in to local SQLite with status PENDING_SYNC, synchronously calls `POST /api/checkins/{ticketId}`, updates the local record to SYNCED on HTTP 200, and displays a green "VALID — [Ticket Type] [Name]" result within 1 second
+- **THEN** the app verifies the JWT signature locally, confirms the ticket's `concert_id` and `zone` match the device's active gate assignment, writes the check-in to local SQLite with status PENDING_SYNC, synchronously calls `POST /api/checkins/{ticketId}`, updates the local record to SYNCED on HTTP 200, and displays a green "VALID — [Ticket Type] [Name]" result within 1 second
+
+#### Scenario: Ticket scanned at wrong gate or zone
+- **WHEN** a CHECKER scans a valid QR e-ticket whose `concert_id` or `zone` does not match the device's active gate assignment
+- **THEN** the app displays "WRONG GATE — use [assigned zone/gate]" and does not create a local check-in record or call the backend, even if the device is offline
 
 #### Scenario: Ticket already checked in by another gate — detected online
 - **WHEN** a CHECKER scans a valid QR code while online but the backend returns HTTP 409 (already checked in by another device)
@@ -34,7 +38,7 @@ The checker mobile app SHALL record check-ins locally and provide pass/fail deci
 
 #### Scenario: Valid QR scanned while offline
 - **WHEN** a CHECKER scans a valid QR code while the device has no network connection
-- **THEN** the app verifies the JWT signature locally, displays the result, and records the check-in in local SQLite storage with PENDING_SYNC status
+- **THEN** the app verifies the JWT signature locally, confirms the ticket is in the assigned concert/zone for this gate, displays the result, and records the check-in in local SQLite storage with PENDING_SYNC status
 
 #### Scenario: Duplicate scan while offline (same session)
 - **WHEN** a CHECKER scans the same QR code twice while offline
@@ -44,7 +48,7 @@ The checker mobile app SHALL record check-ins locally and provide pass/fail deci
 - **WHEN** the device regains network connectivity
 - **THEN** the app automatically flushes all PENDING_SYNC check-ins to the backend via `POST /api/checkins/batch` within 30 seconds
 
-### Requirement: Offline check-in sync is idempotent and conflict-free
+### Requirement: Offline check-in sync is idempotent and conflict-aware
 The backend SHALL process batched offline check-ins without creating duplicate records or allowing a ticket to be marked as checked-in more than once.
 
 API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-record result (`ok` or `conflict`). `GET /api/admin/concerts/{id}/checkin-conflicts` is ORGANIZER-only and ownership-scoped for post-event audit.
@@ -55,11 +59,11 @@ API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-recor
 
 #### Scenario: Batch sync with duplicate ticket
 - **WHEN** the checker app sends a batch containing a ticket ID already marked as checked-in by another device
-- **THEN** the backend rejects the duplicate entry via the `checkins.ticket_id` UNIQUE constraint, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, attempted device scan timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
+- **THEN** the backend rejects the duplicate entry via the `checkins.ticket_id` UNIQUE constraint, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, gate ID, zone, attempted device scan timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
 
 #### Scenario: Conflict audit trail is preserved for post-event review
 - **WHEN** a conflict is recorded during batch sync
-- **THEN** an ORGANIZER can view all conflict attempts for their concert via the admin dashboard, including which ticket was involved, which device attempted the duplicate scan, and the time difference between the original and duplicate scan — enabling post-event fraud investigation
+- **THEN** an ORGANIZER can view all conflict attempts for their concert via the admin dashboard, including which ticket was involved, which gate/lane and device attempted the duplicate scan, the ticket zone, and the time difference between the original and duplicate scan — enabling post-event fraud investigation
 
 #### Scenario: No check-in data lost on app restart during offline period
 - **WHEN** the checker app is closed and reopened while offline
@@ -67,7 +71,26 @@ API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-recor
 
 #### Scenario: Same ticket scanned on two simultaneously-offline devices (guarantee boundary)
 - **WHEN** two checker devices are both offline and each scans the same ticket during the offline window
-- **THEN** each device admits the holder locally (the no-double-entry guarantee is per-device always, global only on sync); when both devices later sync, the backend admits the first and records the second in `checkin_conflicts`, marking that device's local record CONFLICT — the residual double-admission window is inherent to offline multi-device operation and is mitigated operationally by single-gate assignment per ticket
+- **THEN** each device admits the holder locally only if the ticket matches that device's gate/zone assignment (duplicate detection is immediate per-device and global only after sync); when both devices later sync, the backend admits the first and records the second in `checkin_conflicts`, marking that device's local record CONFLICT — the residual double-admission window is inherent to offline multi-device operation and is reduced by gate/zone assignment, one active scanner per lane, and fast reconnect sync
+
+### Requirement: Gate and zone assignment reduces offline conflict risk
+Checker devices SHALL be scoped to a concert gate/lane and allowed ticket zones before they can scan tickets, so offline decisions are limited to the physical queue that device is responsible for.
+
+#### Scenario: Checker downloads assignment before event
+- **WHEN** a CHECKER logs in while online and selects or is assigned to a concert gate/lane
+- **THEN** the app downloads and stores the assignment locally, including `concert_id`, `gate_id`, `lane_id` if applicable, and allowed zones; the assignment remains available for offline validation
+
+#### Scenario: Assignment missing before offline scan
+- **WHEN** a CHECKER opens the scanner offline without a cached assignment for the concert
+- **THEN** the app blocks scanning and displays "Assignment required — connect to network before scanning" so it does not admit tickets without a gate/zone scope
+
+#### Scenario: Backup scanner in offline lane
+- **WHEN** a lane is operating offline and has multiple devices available
+- **THEN** only one device is marked active for that lane; backup devices remain standby and cannot scan until activated by online reassignment or an audited emergency local activation, reducing the chance that two offline devices scan the same physical queue
+
+#### Scenario: Standby scanner attempts to scan
+- **WHEN** a CHECKER opens the scanner with a cached assignment marked standby/inactive for the lane
+- **THEN** the app displays "Standby scanner — activate before scanning" and blocks QR scanning until the assignment is activated online or through an audited emergency local activation flow
 
 ### Requirement: VIP guests can be admitted via identity lookup
 An authenticated CHECKER SHALL be able to search for a VIP guest by name or phone number and mark them as admitted. VIP guest lookup requires network connectivity; the VIP entrance is an organizer responsibility to keep connected.
@@ -99,7 +122,7 @@ The checker mobile app SHALL require a valid CHECKER-role JWT to access QR scann
 
 #### Scenario: Checker accesses app with valid credentials
 - **WHEN** a CHECKER logs in with valid credentials
-- **THEN** the app loads the QR scanner and pre-downloads the **public** verification key(s) for offline JWT signature verification (asymmetric — EdDSA/RS256, keyed by JWT `kid`); the app never receives the private signing key, so a compromised device cannot forge tickets. The public key bundle is stored in device secure storage (Keychain on iOS, Keystore on Android)
+- **THEN** the app loads the QR scanner, pre-downloads the **public** verification key(s) for offline JWT signature verification (asymmetric — EdDSA/RS256, keyed by JWT `kid`), and downloads the checker's active gate/zone assignments; the app never receives the private signing key, so a compromised device cannot forge tickets. The public key bundle and assignment are stored in device secure storage (Keychain on iOS, Keystore on Android)
 
 #### Scenario: AUDIENCE user attempts to access checker app
 - **WHEN** a user with AUDIENCE role authenticates into the checker app

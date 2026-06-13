@@ -16,7 +16,7 @@ Xây dựng nền tảng TicketBox số hóa toàn bộ vòng đời bán vé, v
 1. **Chịu được 80.000 người truy cập trong 5 phút đầu mở bán** (70% dồn vào phút đầu) mà không sập và không bán quá số vé — kể cả loại vé chỉ có 200 chỗ (SVIP).
 2. **Không bao giờ trừ tiền hai lần và không bao giờ bán một ghế cho hai người**, kể cả khi client retry, mạng đứt giữa chừng, hoặc cổng thanh toán (VNPAY/MoMo) gặp sự cố kéo dài.
 3. **Công bằng cho khán giả thật**: thứ tự được mua phản ánh thứ tự đến (FIFO waiting queue), bot và client spam bị chặn bởi rate limiting.
-4. **Soát vé hoạt động cả khi mất mạng** tại sân vận động; dữ liệu không mất khi kết nối lại; một vé không được vào cổng hai lần (per-device luôn đúng, toàn cục hội tụ khi sync).
+4. **Soát vé hoạt động cả khi mất mạng** tại sân vận động; dữ liệu không mất khi kết nối lại; chống quét trùng luôn đúng trên cùng một thiết bị và hội tụ toàn cục khi sync. Trường hợp hai thiết bị cùng offline quét cùng một vé được ghi nhận là conflict sau khi đồng bộ và giảm thiểu bằng phân cổng/khu.
 5. **Giới hạn vé per-user được enforce chính xác dưới tải cao** — không lách được bằng nhiều đơn nhỏ hoặc nhiều request đồng thời.
 6. Trang danh sách / chi tiết concert phục vụ **hàng nghìn request/giây** qua cache mà số vé còn lại vẫn phản ánh gần đúng thực tế (trễ tối đa 10 giây).
 

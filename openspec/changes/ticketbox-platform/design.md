@@ -8,7 +8,7 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 - Handle 80,000 concurrent users at ticket sale open without data corruption or double-selling
 - Enforce per-user ticket purchase limits atomically under concurrent load
 - Process payments via VNPAY/MoMo with idempotency and circuit breaker protection
-- Support offline QR check-in with conflict-free sync when connectivity resumes
+- Support offline QR check-in with gate/zone-scoped devices, idempotent sync, and conflict audit when connectivity resumes
 - Expose role-restricted access across web, admin, and mobile surfaces
 - Generate AI artist bios from uploaded PDF press kits
 - Import nightly VIP guest CSV without interrupting live system
@@ -36,7 +36,7 @@ All backend HTTP routes are exposed under `/api/**` through Nginx. Routes withou
 | Admin concerts | `POST /api/admin/concerts`, `PUT /api/admin/concerts/{id}`, `DELETE /api/admin/concerts/{id}`, `POST /api/admin/concerts/{id}/publish`, `POST /api/admin/concerts/{id}/ticket-types`, `PUT /api/admin/concerts/{id}/ticket-types/{typeId}`, `GET /api/admin/concerts/{id}/stats`, `GET /api/admin/concerts/{id}/checkin-conflicts` | ORGANIZER plus server-side ownership check |
 | AI artist bio | `POST /api/admin/concerts/{id}/artist-pdf`, `GET /api/admin/concerts/{id}/artist-bio`, `PUT /api/admin/concerts/{id}/artist-bio`, `POST /api/admin/concerts/{id}/artist-bio/publish`, `POST /api/admin/concerts/{id}/artist-bio/reject` | ORGANIZER plus ownership; draft visible only through admin route |
 | Refund/admin orders | `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded` | ORGANIZER plus ownership; money movement remains manual/out-of-band |
-| Checker | `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
+| Checker | `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
 | VIP import | `POST /api/admin/vip-imports` | ORGANIZER; imported rows must resolve to concerts owned by the requester |
 
 ## Decisions
@@ -163,7 +163,7 @@ The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING`
 
 ### D8 — QR E-Ticket: Asymmetrically-Signed JWT (RS256 / EdDSA)
 
-**Decision:** E-ticket QR code encodes a JWT signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred; RS256 acceptable). Payload: `{ticket_id, order_id, user_id, concert_id, ticket_type, issued_at}`. The **private** signing key lives server-side only. The checker app ships the **public** key and verifies the signature offline.
+**Decision:** E-ticket QR code encodes a JWT signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred; RS256 acceptable). Payload: `{ticket_id, order_id, user_id, concert_id, ticket_type, zone, issued_at}`. The **private** signing key lives server-side only. The checker app ships the **public** key and verifies the signature offline.
 
 **Why not HMAC:** HMAC-SHA256 is symmetric — offline verification would require shipping the *signing* secret inside every checker app bundle, where it is trivially extractable. Anyone with the secret could forge unlimited valid tickets. Asymmetric signing lets devices verify without holding any forging capability; key rotation is handled by bundling a small set of valid public keys (keyed by JWT `kid`) and refreshing them when the device is online.
 
@@ -173,17 +173,19 @@ The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING`
 
 ### D9 — Offline Check-in: Local SQLite + Sync Queue
 
-**Decision:** React Native checker app stores scanned check-ins in local SQLite. On scan: write to local DB first, then attempt sync to backend. If offline: queue the record. On reconnect: flush queue to `POST /api/checkins/batch`. Backend inserts accepted check-ins into `checkins` with a UNIQUE constraint on `ticket_id`; first accepted scan wins, and later duplicate attempts are recorded in `checkin_conflicts` without overwriting the winner.
+**Decision:** React Native checker app stores scanned check-ins in local SQLite. Each checker device also has an active gate assignment for a concert (`gate_id` plus allowed zones such as `SVIP` or `CAT1`) downloaded while online and cached locally. On scan: verify the QR signature, reject tickets whose `concert_id` or `zone` does not match the device assignment, write accepted scans to local DB first, then attempt sync to backend. If offline: queue the record. On reconnect: flush queue to `POST /api/checkins/batch`. Backend inserts accepted check-ins into `checkins` with a UNIQUE constraint on `ticket_id`; first accepted scan wins, and later duplicate attempts are recorded in `checkin_conflicts` without overwriting the winner.
 
 **Alternatives considered:**
 - *CRDTs*: Correct but significant implementation complexity for a check-in-only use case.
 - *Reject if offline*: Unacceptable — project requirement explicitly requires offline operation.
 
-**Rationale:** Check-in is append-only (a ticket is either checked-in or not). Duplicate check-ins are rejected by the backend `checkins.ticket_id` uniqueness constraint, so the accepted row is never overwritten; conflict attempts are audit records. The one-way nature (ticket can only transition to checked-in, never back) eliminates merge conflicts.
+**Rationale:** Check-in is append-only (a ticket is either checked-in or not). Duplicate check-ins are rejected by the backend `checkins.ticket_id` uniqueness constraint, so the accepted row is never overwritten; conflict attempts are audit records. Gate/zone scoping reduces the chance that two offline devices ever see the same ticket by routing each ticket-holder to one intended entrance. The one-way nature (ticket can only transition to checked-in, never back) eliminates merge conflicts.
 
-**Implementation note — SQLite as universal scan log:** The local SQLite `local_checkins` table is not merely an offline buffer; it is the authoritative scan log for this device regardless of connectivity. All scans — online and offline — write to SQLite first before any backend call is made. This ensures that if the device transitions from online to offline mid-session, already-scanned tickets are still rejected locally without requiring a network check. Local records carry one of three statuses: `SYNCED` (backend confirmed), `PENDING_SYNC` (awaiting sync), or `CONFLICT` (backend rejected — already admitted by another device). All three statuses block re-entry on this device.
+**Implementation note — SQLite as universal scan log:** The local SQLite `local_checkins` table is not merely an offline buffer; it is the authoritative scan log for this device regardless of connectivity. All accepted scans — online and offline — write to SQLite first before any backend call is made. This ensures that if the device transitions from online to offline mid-session, already-scanned tickets are still rejected locally without requiring a network check. Local records carry `gate_id`, `zone`, `device_id`, and one of three statuses: `SYNCED` (backend confirmed), `PENDING_SYNC` (awaiting sync), or `CONFLICT` (backend rejected — already admitted by another device). All three statuses block re-entry on this device.
 
-**Guarantee boundary — cross-device offline double-entry:** The "a ticket may not be used twice" guarantee is **per-device always, global eventually** — it cannot be absolute while two devices are simultaneously offline. If checker A and checker B are both offline and each scans the same ticket, both admit the holder at the gate; the conflict is only detected when the second device syncs and the backend's `ticket_id` uniqueness rejects it (marking that local record `CONFLICT`). The person is already inside by then. This residual window is inherent to offline-capable multi-device check-in and is accepted; it is mitigated operationally by assigning each ticket-holder to a single gate/zone so two checkers rarely scan the same ticket, and by surfacing `CONFLICT` records in the admin dashboard for post-hoc review.
+**Gate/zone assignment as conflict reduction:** Before the event, the organizer assigns checker devices or checker accounts to gates/lanes and allowed zones. The app stores the current assignment locally and refuses offline admission for tickets outside that assignment, returning "WRONG GATE — go to [zone/gate]" rather than creating a check-in record. The assignment is not a correctness boundary like `checkins.ticket_id` uniqueness; it is an operational mitigation that narrows the residual cross-device offline conflict window by keeping each ticket in one physical queue. The operational rule is one active scanner per lane when devices are offline; backup devices remain standby unless activated by online reassignment or an audited emergency local activation after the active scanner fails.
+
+**Guarantee boundary — cross-device offline double-entry:** The duplicate-entry guarantee is **per-device always, global eventually** — it cannot be absolute while two devices are simultaneously offline. If checker A and checker B are both offline and each scans the same in-zone ticket during the same window, both can admit the holder at the gate; the conflict is only detected when the second device syncs and the backend's `ticket_id` uniqueness rejects it (marking that local record `CONFLICT`). The person is already inside by then. This residual window is inherent to offline-capable multi-device check-in and is accepted; it is mitigated by gate/zone assignment, one-active-scanner-per-lane operation, short reconnect sync windows, and surfacing `CONFLICT` records in the admin dashboard for post-hoc review.
 
 ---
 
@@ -261,9 +263,9 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 ---
 
-### D14 — Message Broker: Redis Pub/Sub for Notifications
+### D14 — Best-Effort Event Channel: Redis Pub/Sub for Notifications
 
-**Decision:** Use Redis Pub/Sub for internal event dispatch (purchase-confirmed → notification workers). Not RabbitMQ/Kafka.
+**Decision:** Use Redis Pub/Sub for best-effort internal notification dispatch (for example, in-app toast and reminder fan-out). Not RabbitMQ/Kafka.
 
 **Rationale:** Redis is already in the stack for cache and rate limiting. Redis Pub/Sub is sufficient for at-most-once notification delivery and avoids adding a 4th infrastructure service.
 

@@ -30,7 +30,7 @@ Lý do chọn thay vì microservices: đạt được lợi ích phân tách dom
 | Admin concert | `POST /api/admin/concerts`, `PUT /api/admin/concerts/{id}`, `DELETE /api/admin/concerts/{id}`, `POST /api/admin/concerts/{id}/publish`, `POST /api/admin/concerts/{id}/ticket-types`, `PUT /api/admin/concerts/{id}/ticket-types/{typeId}`, `GET /api/admin/concerts/{id}/stats`, `GET /api/admin/concerts/{id}/checkin-conflicts` | ORGANIZER + ownership |
 | AI bio | `POST /api/admin/concerts/{id}/artist-pdf`, `GET /api/admin/concerts/{id}/artist-bio`, `PUT /api/admin/concerts/{id}/artist-bio`, `POST /api/admin/concerts/{id}/artist-bio/publish`, `POST /api/admin/concerts/{id}/artist-bio/reject` | ORGANIZER + ownership |
 | Refund/admin orders | `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded` | ORGANIZER + ownership; refund money movement manual |
-| Checker | `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
+| Checker | `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
 | VIP import | `POST /api/admin/vip-imports` | ORGANIZER; rows must resolve to concerts owned by requester |
 
 **Khi một phần gặp sự cố, phần còn lại bị ảnh hưởng ra sao** (phân tích blast-radius):
@@ -40,7 +40,7 @@ Lý do chọn thay vì microservices: đạt được lợi ích phân tách dom
 | VNPAY/MoMo lỗi kéo dài | Circuit Breaker mở → mua vé trả về "thanh toán tạm thời không khả dụng", **không trừ tiền** | Xem concert, số vé còn lại, soát vé, admin — hoàn toàn bình thường (graceful degradation) |
 | Redis mất | Cache miss → đọc thẳng DB (chậm hơn); rate limit **fail-open** (ưu tiên availability); waiting queue **fail-closed** (đóng cổng mở bán thay vì thả herd không kiểm soát) | Tính đúng được giữ bởi guard bền trong PostgreSQL: idempotency UNIQUE constraint, per-user limit count trong transaction |
 | Backend restart giữa chừng | Bio đang GENERATING được reaper thu hồi; e-ticket chưa gửi vẫn nằm trong outbox và được worker gửi lại; đơn PENDING được expiry job xử lý | Không mất dữ liệu nhờ trạng thái bền trong DB |
-| Mất mạng tại cổng soát vé | App chuyển sang offline path: verify chữ ký QR bằng public key local, ghi SQLite, sync lại sau | Soát vé tiếp tục; chống quét trùng per-device vẫn đúng |
+| Mất mạng tại cổng soát vé | App chuyển sang offline path: verify chữ ký QR bằng public key local, kiểm tra assignment cổng/khu đã cache, ghi SQLite, sync lại sau | Soát vé tiếp tục trong phạm vi cổng/khu được phân; chống quét trùng per-device vẫn đúng |
 | Gateway webhook không đến | Đơn ở PENDING_CONFIRMATION, ghế giữ nguyên; job chủ động query API trạng thái giao dịch của gateway trước khi expire | Không double-charge, không oversell |
 
 ## 2. C4 Diagram
@@ -88,7 +88,7 @@ graph TB
 Nguồn: [`diagrams/high-level.drawio`](diagrams/high-level.drawio) — thể hiện luồng dữ liệu giữa các module backend, ba điểm tích hợp (payment gateway, Gemini API, CSV nhãn hàng) và luồng soát vé offline. Điểm đáng chú ý:
 
 - **Đường mua vé** đi qua chuỗi bảo vệ: Waiting Queue (admit N/giây) → Token Bucket → atomic conditional UPDATE trên inventory → Payment Module (Circuit Breaker + Idempotency).
-- **Soát vé offline** là local-first: mọi scan ghi SQLite trước, backend chỉ là bước xác nhận; sync queue đẩy lại khi có mạng.
+- **Soát vé offline** là local-first và gate-scoped: app tải assignment cổng/khu khi online, chỉ nhận vé đúng concert/zone của cổng đó, mọi scan hợp lệ ghi SQLite trước; sync queue đẩy lại backend khi có mạng.
 - **CSV import** và **AI bio** chạy nền (`@Scheduled` / `@Async`), transaction tách biệt — lỗi của chúng không chạm đường mua vé.
 
 ## 4. Thiết kế cơ sở dữ liệu
@@ -108,6 +108,7 @@ erDiagram
     concerts ||--|{ ticket_types : "có"
     concerts ||--o{ orders : "được đặt"
     concerts ||--o{ vip_guests : "guest list"
+    concerts ||--o{ checker_gate_assignments : "phân cổng"
     orders ||--|{ order_items : "gồm"
     order_items }o--|| ticket_types : "loại vé"
     tickets }o--|| ticket_types : "loại vé"
@@ -116,6 +117,7 @@ erDiagram
     orders ||--o{ notification_outbox : "e-ticket must-arrive"
     tickets ||--o| checkins : "tối đa 1 (UNIQUE ticket_id)"
     tickets ||--o{ checkin_conflicts : "lần quét trùng"
+    users ||--o{ checker_gate_assignments : "checker được phân"
 
     users { uuid id PK
             text email UK
@@ -160,19 +162,31 @@ erDiagram
               uuid order_id FK
               uuid ticket_type_id FK
               uuid user_id FK
-              text qr_token UK "JWT ký EdDSA" }
+              text qr_token UK "JWT ký EdDSA/RS256, gồm zone" }
     checkins { uuid id PK
                uuid ticket_id FK "UNIQUE — chống vào 2 lần"
                uuid checker_id FK
                text device_id
+               text gate_id
+               text zone
                timestamptz scanned_at_device
                timestamptz checked_in_at "server time" }
     checkin_conflicts { uuid id PK
                         uuid ticket_id FK
                         uuid attempted_by FK
                         text device_id
+                        text gate_id
+                        text zone
                         timestamptz attempted_at "device scan time"
                         timestamptz winning_checked_in_at }
+    checker_gate_assignments { uuid id PK
+                               uuid concert_id FK
+                               uuid checker_id FK
+                               text device_id "nullable"
+                               text gate_id
+                               text lane_id "nullable"
+                               text allowed_zones "GA/SVIP/VIP/CAT1/CAT2"
+                               bool active }
     vip_guests { uuid id PK
                  uuid concert_id FK
                  text name
@@ -255,13 +269,15 @@ sequenceDiagram
     participant PG as PostgreSQL
 
     Note over APP: Khi login (online): tải public key bundle (EdDSA, theo kid)<br/>— app KHÔNG bao giờ giữ private key
+    Note over APP: Tải assignment cổng/khu (gate_id + allowed zones)<br/>và cache để dùng offline
     C->>APP: Quét QR
     APP->>APP: Verify chữ ký JWT bằng public key (offline được)
+    APP->>APP: Kiểm tra concert_id + zone khớp assignment<br/>sai cổng/khu → WRONG GATE, không ghi check-in
     APP->>SQL: Tra ticket_id — nếu đã có (SYNCED/PENDING_SYNC/CONFLICT) → "ALREADY USED"
-    APP->>SQL: Ghi record PENDING_SYNC (local-first, luôn ghi trước)
+    APP->>SQL: Ghi record PENDING_SYNC kèm gate_id + zone (local-first)
     alt Online
         APP->>API: POST /api/checkins/{ticketId} (đồng bộ, chờ kết quả)
-        API->>PG: INSERT checkins ON CONFLICT (ticket_id) DO NOTHING
+        API->>PG: INSERT checkins (ticket_id, gate_id, zone, ...) ON CONFLICT (ticket_id) DO NOTHING
         alt 200 OK
             APP->>SQL: status → SYNCED, hiển thị VALID ✅
         else 409 (thiết bị khác đã quét)
@@ -274,14 +290,15 @@ sequenceDiagram
     end
     Note over APP,API: Khi có mạng trở lại (≤30s)
     APP->>API: POST /api/checkins/batch (tất cả PENDING_SYNC)
-    API->>PG: Upsert idempotent từng record;<br/>trùng → ghi checkin_conflicts (ai quét, thiết bị nào, lệch bao lâu)
+    API->>PG: Upsert idempotent từng record;<br/>trùng → ghi checkin_conflicts (ai quét, gate/lane, thiết bị nào, lệch bao lâu)
     API-->>APP: Kết quả per-record → SYNCED hoặc CONFLICT
 ```
 
 **Phản ứng khi lỗi giữa chừng:**
 
 - **App bị kill khi đang offline**: mọi record đã nằm trong SQLite (ghi trước khi hiển thị kết quả) → không mất dữ liệu, sync lại ở lần mở sau.
-- **Hai thiết bị cùng offline quét cùng một vé**: cả hai đều cho vào (ranh giới đảm bảo là *per-device luôn đúng, toàn cục hội tụ khi sync*); khi sync, backend nhận thiết bị đầu, ghi thiết bị sau vào `checkin_conflicts` để organizer điều tra hậu sự kiện. Giảm thiểu vận hành: mỗi khán giả được phân về một cổng/khu.
+- **Vé sai cổng/khu**: app đọc `zone` trong QR và so với assignment đã cache; nếu không khớp thì hiển thị "WRONG GATE" và không ghi check-in, kể cả offline.
+- **Hai thiết bị cùng offline quét cùng một vé**: cả hai có thể cho vào nếu cùng thuộc đúng cổng/khu và cùng offline (ranh giới đảm bảo là *per-device luôn đúng, toàn cục hội tụ khi sync*); khi sync, backend nhận thiết bị đầu, ghi thiết bị sau vào `checkin_conflicts` để organizer điều tra hậu sự kiện. Giảm thiểu vận hành: phân cổng/khu, một scanner active mỗi lane; scanner dự phòng cần online reassignment hoặc emergency activation có audit.
 - **Đồng hồ thiết bị sai**: server timestamp là chuẩn cho `checked_in_at`; giờ thiết bị chỉ lưu để audit.
 - **Vé giả / QR sửa đổi**: chữ ký EdDSA fail ngay trên thiết bị, không cần mạng; thiết bị không thể bị trích xuất khóa ký vì chỉ giữ public key.
 
@@ -307,7 +324,7 @@ sequenceDiagram
 | Mọi API endpoint | JWT access token (15 phút, HMAC ký server-side) trong filter chain Spring Security 7; role trong claims; `@PreAuthorize` per-method; 401 khi thiếu/hết hạn, 403 khi sai role |
 | Refresh | Refresh token 7 ngày, **rotate mỗi lần dùng**; phát hiện reuse → thu hồi toàn bộ token của user (chống token theft) |
 | Trang admin `/admin/**` | Route guard phía client (UX) + mọi API admin đều check role + ownership phía server (an ninh thật) |
-| Mobile app soát vé | Login bắt buộc role CHECKER; app chỉ nhận **public** key để verify vé offline — không bao giờ giữ khả năng ký/giả vé |
+| Mobile app soát vé | Login bắt buộc role CHECKER; app chỉ nhận **public** key để verify vé offline và assignment cổng/khu để giới hạn scan — không bao giờ giữ khả năng ký/giả vé |
 
 ## 7. Thiết kế các cơ chế bảo vệ hệ thống
 
@@ -348,4 +365,4 @@ Cache-aside (lazy load khi miss, ghi lại với TTL) thay vì write-through vì
 
 16 ADR đầy đủ trong [`../openspec/changes/ticketbox-platform/design.md`](../openspec/changes/ticketbox-platform/design.md):
 
-D1 Modular Monolith · D2 PostgreSQL + Redis · D3 Atomic conditional decrement + reservation lifecycle · D4 Per-user limit hai lớp · D5 Token Bucket · D6 Circuit Breaker + Idempotency · D7 JWT + RBAC · D8 QR ký bất đối xứng (EdDSA) · D9 Offline check-in SQLite local-first · D10 Cache-aside · D11 AI bio (Gemini + review gate) · D12 CSV import idempotent + reconciliation · D13 Notification Strategy Pattern · D14 Redis Pub/Sub + transactional outbox · D15 Java 25 / Spring Boot 4 / Gradle · D16 Virtual Waiting Queue
+D1 Modular Monolith · D2 PostgreSQL + Redis · D3 Atomic conditional decrement + reservation lifecycle · D4 Per-user limit hai lớp · D5 Token Bucket · D6 Circuit Breaker + Idempotency · D7 JWT + RBAC · D8 QR ký bất đối xứng (EdDSA ưu tiên / RS256 chấp nhận được) · D9 Offline check-in gate-scoped + SQLite local-first · D10 Cache-aside · D11 AI bio (Gemini + review gate) · D12 CSV import idempotent + reconciliation · D13 Notification Strategy Pattern · D14 Redis Pub/Sub best-effort + transactional outbox · D15 Java 25 / Spring Boot 4 / Gradle · D16 Virtual Waiting Queue

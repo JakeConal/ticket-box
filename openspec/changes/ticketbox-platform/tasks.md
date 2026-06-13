@@ -17,14 +17,15 @@
 - [ ] 2.4 Create migration: `ticket_types` table (`id`, `concert_id`, `name`, `zone`, `price`, `total_quantity`, `remaining_quantity`, `sale_opens_at`, `per_user_limit`)
 - [ ] 2.5 Create migration: `orders` table (`id`, `user_id`, `concert_id`, `status` [PENDING/PENDING_CONFIRMATION/PAID/FAILED/EXPIRED/REFUND_REQUIRED/REFUNDED], `idempotency_key`, `payment_provider`, `payment_ref`, `created_at`, `paid_at`) — `REFUND_REQUIRED`/`REFUNDED` are refund/audit states and do not mutate inventory
 - [ ] 2.6 Create migration: `order_items` table (`id`, `order_id`, `ticket_type_id`, `quantity`)
-- [ ] 2.7 Create migration: `tickets` table (`id`, `order_id`, `ticket_type_id`, `user_id`, `qr_token`) — issued only when an order becomes PAID; check-in state is derived from `checkins`
-- [ ] 2.8 Create migration: `checkins` table (`id`, `ticket_id`, `checker_id`, `checked_in_at` [server timestamp], `device_id`, `scanned_at_device` [nullable device timestamp for offline audit]); unique constraint on `ticket_id`
+- [ ] 2.7 Create migration: `tickets` table (`id`, `order_id`, `ticket_type_id`, `user_id`, `qr_token`) — issued only when an order becomes PAID; QR payload includes ticket zone for offline gate validation; check-in state is derived from `checkins`
+- [ ] 2.8 Create migration: `checkins` table (`id`, `ticket_id`, `checker_id`, `checked_in_at` [server timestamp], `device_id`, `gate_id`, `zone`, `scanned_at_device` [nullable device timestamp for offline audit]); unique constraint on `ticket_id`
 - [ ] 2.9 Create migration: `vip_guests` table (`id`, `concert_id`, `name`, `phone_normalized`, `sponsor`, `zone`, `active` [default true; soft-delete flag for snapshot reconciliation], `entered`, `entered_at`)
 - [ ] 2.10 Add indexes: `orders(user_id, concert_id)`, `tickets(qr_token)` unique, `order_items(order_id, ticket_type_id)`, `vip_guests(concert_id, phone_normalized)` unique
-- [ ] 2.11 Create migration: `checkin_conflicts` table (`id`, `ticket_id`, `attempted_by` (checker user_id), `attempted_at` [device scan timestamp], `device_id`, `winning_checked_in_at`); index on `ticket_id` and `attempted_by`
+- [ ] 2.11 Create migration: `checkin_conflicts` table (`id`, `ticket_id`, `attempted_by` (checker user_id), `attempted_at` [device scan timestamp], `device_id`, `gate_id`, `zone`, `winning_checked_in_at`); index on `ticket_id`, `attempted_by`, and `gate_id`
 - [ ] 2.12 Create migration: `idempotency_keys` table (`key` UNIQUE, `order_id`, `result` [serialized response], `created_at`) — durable first-writer-wins guard for purchase idempotency (D6); Redis is only the fast-path cache
 - [ ] 2.13 Create migration: `notification_outbox` table (`id`, `order_id`, `event_type`, `payload`, `status` [PENDING/SENT/FAILED], `attempts`, `created_at`, `sent_at`) — transactional outbox for must-arrive e-ticket delivery (D14); FAILED rows remain retryable/auditable until delivered or manually remediated
 - [ ] 2.14 Create migration: `import_files` table (`id`, `file_name`, `content_hash` UNIQUE, `processed_at`, `summary`) — content-hash registry so archived CSV files are skipped on future runs
+- [ ] 2.15 Create migration: `checker_gate_assignments` table (`id`, `concert_id`, `checker_id`, `device_id` nullable, `gate_id`, `lane_id` nullable, `allowed_zones`, `active`, `created_at`) — scopes checker devices/accounts to gates and zones for offline conflict reduction
 
 ## 3. Authentication & RBAC
 
@@ -81,7 +82,7 @@
 
 ## 7. QR E-Ticket Generation
 
-- [ ] 7.1 Implement `QrTokenService`: generate JWT-signed payload `{ticketId, orderId, userId, concertId, ticketType, issuedAt}` signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred, RS256 acceptable; include `kid` header for key rotation); the private signing key lives server-side only (D8)
+- [ ] 7.1 Implement `QrTokenService`: generate JWT-signed payload `{ticketId, orderId, userId, concertId, ticketType, zone, issuedAt}` signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred, RS256 acceptable; include `kid` header for key rotation); the private signing key lives server-side only (D8)
 - [ ] 7.2 On order transition to PAID: generate one QR token per ticket, store in `tickets.qr_token`
 - [ ] 7.3 Implement `GET /api/orders/{id}/tickets` — return list of tickets with QR token (base64 PNG or SVG) for display in frontend
 - [ ] 7.4 Expose `GET /api/checker/key-bundle?concertId=X` — CHECKER only; returns the **public** verification key(s) keyed by `kid` + concert validity window; the private signing key is never sent to devices, so a compromised device cannot forge tickets; app stores the bundle in OS secure storage (Keychain on iOS, Keystore on Android)
@@ -89,24 +90,27 @@
 
 ## 8. Offline Check-in (Mobile App)
 
-- [ ] 8.1 Implement React Native checker app login screen: call `POST /api/auth/login`, store JWT in SecureStorage; on login call `GET /api/checker/key-bundle?concertId=X` for assigned concerts and store the public verification key bundle (keyed by `kid`) in Keychain (iOS) / Keystore (Android); refresh the bundle whenever the device is online
+- [ ] 8.1 Implement React Native checker app login screen: call `POST /api/auth/login`, store JWT in SecureStorage; on login call `GET /api/checker/key-bundle?concertId=X` and `GET /api/checker/assignments?concertId=X` for assigned concerts; store the public verification key bundle and active assignment in secure local storage; refresh both whenever the device is online
 - [ ] 8.2 Implement QR scanner screen using `react-native-camera` or `expo-barcode-scanner`
-- [ ] 8.3 Implement local SQLite schema: `local_checkins(ticket_id, scanned_at, checker_id, device_id, sync_status)` where `sync_status` is one of SYNCED / PENDING_SYNC / CONFLICT; unique constraint on `ticket_id`
-- [ ] 8.4 On every scan (online and offline): verify the asymmetric JWT signature (EdDSA/RS256) with the public key from secure storage (selected by `kid`); check `local_checkins` for existing record on `ticket_id`; if found, display ALREADY USED — do not proceed regardless of network state
-- [ ] 8.5 Implement online check-in (write-local-first, synchronous): write record to local SQLite with status PENDING_SYNC; synchronously call `POST /api/checkins/{ticketId}`; on 200 OK update status to SYNCED and display VALID; on 409 update status to CONFLICT and display ALREADY USED; on timeout/network error leave as PENDING_SYNC and display VALID (offline fallback)
-- [ ] 8.6 Implement offline scan path: write record to local SQLite with status PENDING_SYNC; display VALID immediately with no backend call
-- [ ] 8.7 Implement sync queue: on reconnect, flush all PENDING_SYNC records via `POST /api/checkins/batch`; update each record's status to SYNCED or CONFLICT based on per-record backend response
-- [ ] 8.8 Implement `POST /api/checkins/batch` on backend: for each record attempt idempotent upsert (`INSERT ... ON CONFLICT (ticket_id) DO NOTHING`); on conflict INSERT into `checkin_conflicts` table capturing `ticket_id`, `attempted_by`, `device_id`, `attempted_at`, `winning_checked_in_at`; return per-record result (ok / conflict)
-- [ ] 8.9 Implement VIP guest lookup screen (online-only): search bar accepting name (fuzzy, diacritic-insensitive) or phone number (exact after normalization); call `GET /api/vip-guests?concertId=&q=`; display list of matches for checker to disambiguate; "Mark as Entered" button calls `POST /api/vip-guests/{id}/enter`; if device offline display "No connection — VIP lookup requires network"
-- [ ] 8.10 Implement VIP already-admitted and not-found responses in the app: display "ALREADY ADMITTED — Entered at [timestamp]" on 409; display "NOT ON GUEST LIST — Contact organizer" on 404
-- [ ] 8.11 Implement `GET /api/admin/concerts/{id}/checkin-conflicts` — ORGANIZER only (ownership-scoped); return conflict attempts for one owned concert for the admin audit page
-- [ ] 8.12 Write test: scan → offline store → reconnect → sync → verify backend state matches; write test: online scan → device goes offline → re-scan same ticket → assert ALREADY USED from local SQLite; wrong-role access to checker/admin conflict routes returns 403
+- [ ] 8.3 Implement `GET /api/checker/assignments?concertId=X` and assignment storage: return `gate_id`, optional `lane_id`, allowed zones, and active/standby state for the checker/device; cache it locally so offline scans are scoped to one gate/zone assignment
+- [ ] 8.4 Implement local SQLite schema: `local_checkins(ticket_id, scanned_at, checker_id, device_id, gate_id, zone, sync_status)` where `sync_status` is one of SYNCED / PENDING_SYNC / CONFLICT; unique constraint on `ticket_id`
+- [ ] 8.5 On every scan (online and offline): verify the asymmetric JWT signature (EdDSA/RS256) with the public key from secure storage (selected by `kid`); verify QR `concertId` and `zone` match the cached gate assignment; if not, display WRONG GATE and do not write a check-in; check `local_checkins` for existing record on `ticket_id`; if found, display ALREADY USED — do not proceed regardless of network state
+- [ ] 8.6 Block scanner access offline if no cached assignment exists for the concert, or if the cached assignment is standby/inactive; allow standby devices to scan only after online reassignment or an audited emergency local activation so the device cannot admit tickets without an active gate/zone scope
+- [ ] 8.7 Implement online check-in (write-local-first, synchronous): write record to local SQLite with status PENDING_SYNC including `gate_id` and `zone`; synchronously call `POST /api/checkins/{ticketId}`; on 200 OK update status to SYNCED and display VALID; on 409 update status to CONFLICT and display ALREADY USED; on timeout/network error leave as PENDING_SYNC and display VALID (offline fallback)
+- [ ] 8.8 Implement offline scan path: write record to local SQLite with status PENDING_SYNC including `gate_id` and `zone`; display VALID immediately with no backend call
+- [ ] 8.9 Implement sync queue: on reconnect, flush all PENDING_SYNC records via `POST /api/checkins/batch`; include `device_id`, `gate_id`, `zone`, and device scan timestamp; update each record's status to SYNCED or CONFLICT based on per-record backend response
+- [ ] 8.10 Implement `POST /api/checkins/batch` on backend: for each record attempt idempotent upsert (`INSERT ... ON CONFLICT (ticket_id) DO NOTHING`); on conflict INSERT into `checkin_conflicts` table capturing `ticket_id`, `attempted_by`, `device_id`, `gate_id`, `zone`, `attempted_at`, `winning_checked_in_at`; return per-record result (ok / conflict)
+- [ ] 8.11 Implement VIP guest lookup screen (online-only): search bar accepting name (fuzzy, diacritic-insensitive) or phone number (exact after normalization); call `GET /api/vip-guests?concertId=&q=`; display list of matches for checker to disambiguate; "Mark as Entered" button calls `POST /api/vip-guests/{id}/enter`; if device offline display "No connection — VIP lookup requires network"
+- [ ] 8.12 Implement VIP already-admitted and not-found responses in the app: display "ALREADY ADMITTED — Entered at [timestamp]" on 409; display "NOT ON GUEST LIST — Contact organizer" on 404
+- [ ] 8.13 Implement `GET /api/admin/concerts/{id}/checkin-conflicts` — ORGANIZER only (ownership-scoped); return conflict attempts for one owned concert, including gate/lane, zone, device, checker, and time delta for the admin audit page
+- [ ] 8.14 Add admin/setup support to create gate/lane assignments and mark one active scanner per lane during offline operation; backup devices should be configured as standby/inactive unless the active scanner fails, with activation recorded online or through an emergency local audit record
+- [ ] 8.15 Write test: scan → offline store → reconnect → sync → verify backend state matches; write test: online scan → device goes offline → re-scan same ticket → assert ALREADY USED from local SQLite; write test: wrong-zone QR is rejected offline without local check-in; write test: missing cached assignment blocks offline scanning; wrong-role access to checker/admin conflict routes returns 403
 
 ## 9. Notifications
 
 - [ ] 9.1 Define `NotificationChannel` interface: `send(NotificationEvent event)`
 - [ ] 9.2 Implement `EmailNotificationChannel` using JavaMailSender: purchase confirmation with QR code attachment, 24h reminder, cancellation notice
-- [ ] 9.3 Implement `InAppNotificationChannel` using Server-Sent Events (SSE) or WebSocket: push notification to active sessions
+- [ ] 9.3 Implement `InAppNotificationChannel` using Server-Sent Events (SSE) or WebSocket: realtime in-app notification to active sessions
 - [ ] 9.4 Implement `NotificationService`: iterate all registered `NotificationChannel` beans; catch per-channel exceptions and continue
 - [ ] 9.5 Implement retry logic for failed email sends: up to 3 retries with exponential backoff; failure does not affect order status
 - [ ] 9.6 Implement scheduled 24h reminder job: `@Scheduled` cron; query concerts starting in 22–26 hours; dispatch reminder events for all PAID ticket holders
@@ -171,7 +175,7 @@
 - [ ] 14.5 Implement PDF upload for AI bio: drag-and-drop or file picker; poll `bio_status`; when DRAFT, show review UI to edit the text and publish or reject (the bio is never auto-published)
 - [ ] 14.6 Implement concert stats page: revenue chart, tickets sold per zone, check-in count
 - [ ] 14.7 Implement route guards: redirect non-ORGANIZER users away from `/admin/**`
-- [ ] 14.8 Implement check-in conflicts page (ORGANIZER): table of `checkin_conflicts` for a given concert showing ticket ID, attempting checker, device ID, attempted timestamp, time delta from winning check-in — enables post-event fraud investigation
+- [ ] 14.8 Implement check-in conflicts page (ORGANIZER): table of `checkin_conflicts` for a given concert showing ticket ID, attempting checker, gate/lane, zone, device ID, attempted timestamp, time delta from winning check-in — enables post-event fraud investigation
 - [ ] 14.9 Implement refunds page (ORGANIZER): table of REFUND_REQUIRED orders for their concerts (order ID, buyer, amount, gateway ref, why it requires refund); "Mark as refunded" action calling `POST /api/admin/orders/{id}/mark-refunded` after the manual gateway refund is done
 
 ## 15. Public Web Frontend (Next.js)
@@ -181,7 +185,7 @@
 - [ ] 15.3 Implement purchase flow: zone selection → quantity picker → payment provider selection → redirect to gateway URL
 - [ ] 15.4 Implement order confirmation page (`/orders/[id]`): poll order status; on PAID, display QR e-ticket(s) with download option
 - [ ] 15.5 Implement my tickets page (`/me/tickets`): list all purchased tickets with QR codes
-- [ ] 15.6 Implement real-time availability update: poll `GET /api/concerts/{id}/availability` every 10s on concert detail page; update zone counts
+- [ ] 15.6 Implement near-real-time availability update: poll `GET /api/concerts/{id}/availability` every 10s on concert detail page; update zone counts
 - [ ] 15.7 Implement auth pages: register, login, logout; store JWT in httpOnly cookie; handle 401 redirects
 
 ## 16. Seed Data

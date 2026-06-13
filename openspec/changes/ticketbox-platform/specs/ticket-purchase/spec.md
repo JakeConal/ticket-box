@@ -7,7 +7,7 @@ API contract: `POST /api/tickets/purchase` is available only to AUDIENCE and ORG
 
 #### Scenario: Successful purchase end-to-end
 - **WHEN** an authenticated user selects 2 CAT1 tickets, completes payment via VNPAY, and the gateway confirms payment
-- **THEN** the system decrements ticket inventory by 2, creates an order with status PAID, and issues 2 QR e-tickets to the user
+- **THEN** the system has reserved inventory by decrementing it at order creation, marks the order PAID after gateway confirmation, and issues 2 QR e-tickets to the user
 
 #### Scenario: Purchase attempt before sale opens
 - **WHEN** a user attempts to purchase tickets before the ticket type's sale open datetime

@@ -6,8 +6,8 @@ An authenticated user with the ORGANIZER role SHALL be able to create a new conc
 API contract: `POST /api/admin/concerts` is ORGANIZER-only and creates a DRAFT concert owned by the requester.
 
 #### Scenario: Successful concert creation
-- **WHEN** an ORGANIZER submits a valid concert form (name, date, venue, artist info, SVG seat map, at least one ticket type)
-- **THEN** the system creates the concert with status DRAFT, returns the new concert ID, and makes it visible to Organizers in the admin dashboard
+- **WHEN** an ORGANIZER submits a valid concert form (name, date, venue, artist info, SVG seat map)
+- **THEN** the system creates the concert with status DRAFT, returns the new concert ID, and makes it visible to Organizers in the admin dashboard; ticket types are configured through the ticket-type endpoints before publishing
 
 #### Scenario: Missing required fields
 - **WHEN** an ORGANIZER submits a concert form missing name, date, or venue
@@ -20,7 +20,7 @@ API contract: `POST /api/admin/concerts/{id}/ticket-types` creates a ticket type
 
 #### Scenario: Valid ticket type configuration
 - **WHEN** an ORGANIZER creates ticket types for zones GA, SVIP, VIP, CAT1, CAT2 with distinct prices, quantities, and per-user limits
-- **THEN** the system saves all ticket types linked to the concert and exposes them on the public concert detail page
+- **THEN** the system saves all ticket types linked to the concert and exposes them on the public concert detail page once the concert is PUBLISHED
 
 #### Scenario: Per-user limit exceeds total quantity
 - **WHEN** an ORGANIZER sets a per-user limit greater than the ticket type's total quantity
@@ -87,7 +87,7 @@ API contract: `GET /api/concerts` returns PUBLISHED concerts only.
 - **THEN** the concert is removed from the public listing within 5 minutes (cache TTL or active invalidation)
 
 ### Requirement: Public users can view concert detail
-Any user SHALL be able to view a concert detail page including artist info, venue, seat map (interactive SVG by zone), and real-time ticket availability per zone.
+Any user SHALL be able to view a concert detail page including artist info, venue, seat map (interactive SVG by zone), and near-real-time ticket availability per zone.
 
 API contract: `GET /api/concerts/{id}` returns public PUBLISHED concert detail and returns a DRAFT concert only to the owning ORGANIZER; `GET /api/concerts/{id}/availability` returns display-only availability by ticket type/zone and is never used by purchase correctness logic.
 
