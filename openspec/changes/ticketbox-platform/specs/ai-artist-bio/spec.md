@@ -3,6 +3,8 @@
 ### Requirement: Organizer can upload a PDF press kit for AI bio generation
 An ORGANIZER SHALL be able to upload a PDF file for a concert, triggering automatic AI-generated artist bio creation.
 
+API contract: `POST /api/admin/concerts/{id}/artist-pdf` is ORGANIZER-only and ownership-scoped. It accepts a PDF upload, validates it, starts async generation, and returns HTTP 202.
+
 #### Scenario: Valid PDF uploaded
 - **WHEN** an ORGANIZER uploads a valid text-based PDF (≤ 20MB) for a concert
 - **THEN** the system accepts the upload, stores the file, and returns HTTP 202 Accepted; the concert's bio status is set to GENERATING
@@ -53,6 +55,8 @@ After a PDF upload, the system SHALL process the file in the background: extract
 ### Requirement: AI-generated bio requires organizer approval before going public
 Because the bio is AI-generated from untrusted third-party content about real, named people, the system SHALL require explicit ORGANIZER approval before the bio is shown publicly, and SHALL allow the organizer to edit it first.
 
+API contract: `GET /api/admin/concerts/{id}/artist-bio` returns draft/status/error details, `PUT /api/admin/concerts/{id}/artist-bio` edits draft text, `POST /api/admin/concerts/{id}/artist-bio/publish` publishes it, and `POST /api/admin/concerts/{id}/artist-bio/reject` rejects it. All are ORGANIZER-only and ownership-scoped.
+
 #### Scenario: Organizer publishes a reviewed draft
 - **WHEN** an ORGANIZER reviews a DRAFT bio (optionally editing the text) and approves it
 - **THEN** the system sets status to PUBLISHED and the bio becomes visible on the public concert detail page
@@ -67,6 +71,8 @@ Because the bio is AI-generated from untrusted third-party content about real, n
 
 ### Requirement: Published bio is displayed on the concert detail page
 Once a bio is PUBLISHED, the system SHALL display it on the public concert detail page and keep the cached page consistent.
+
+API contract: `GET /api/concerts/{id}` includes the bio text only when `bio_status = PUBLISHED`; otherwise it returns status/placeholder data suitable for the public page without exposing the draft.
 
 #### Scenario: Bio displayed after publishing
 - **WHEN** bio status transitions to PUBLISHED (or an organizer edits an already-published bio)

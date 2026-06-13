@@ -3,20 +3,22 @@
 ### Requirement: Checker staff can scan and validate QR e-tickets at the gate
 An authenticated user with the CHECKER role SHALL be able to scan a QR code using the mobile app and receive an immediate pass/fail result.
 
+API contract: `GET /api/checker/key-bundle?concertId=X` returns public verification keys to CHECKER users; `POST /api/checkins/{ticketId}` records a single online check-in attempt and is CHECKER-only.
+
 #### Scenario: Valid QR code scanned while online
 - **WHEN** a CHECKER scans a valid, unused QR e-ticket while connected to the network
-- **THEN** the app verifies the JWT signature locally, synchronously calls `POST /checkins/{ticketId}`, waits for the backend response, and only upon receiving HTTP 200 writes the check-in to local SQLite with status SYNCED and displays a green "VALID — [Ticket Type] [Name]" result within 1 second
+- **THEN** the app verifies the JWT signature locally, writes the check-in to local SQLite with status PENDING_SYNC, synchronously calls `POST /api/checkins/{ticketId}`, updates the local record to SYNCED on HTTP 200, and displays a green "VALID — [Ticket Type] [Name]" result within 1 second
 
 #### Scenario: Ticket already checked in by another gate — detected online
 - **WHEN** a CHECKER scans a valid QR code while online but the backend returns HTTP 409 (already checked in by another device)
-- **THEN** the app writes the record to local SQLite with status CONFLICT and displays a red "ALREADY USED — Checked in at [timestamp]" result; the attendee is not admitted
+- **THEN** the app verifies the JWT signature locally, writes the check-in to local SQLite with status PENDING_SYNC before the backend call, updates the local record to CONFLICT on HTTP 409, and displays a red "ALREADY USED — Checked in at [timestamp]" result; the attendee is not admitted
 
 #### Scenario: Network drops during online check-in call — fallback to offline path
 - **WHEN** a CHECKER scans a valid QR code while online, but the backend call times out or the connection is lost before a response is received
-- **THEN** the app writes the check-in to local SQLite with status PENDING_SYNC, displays a green "VALID (offline fallback)" result, and syncs to the backend when connectivity is restored
+- **THEN** the app leaves the already-written local SQLite record as PENDING_SYNC, displays a green "VALID (offline fallback)" result, and syncs to the backend when connectivity is restored
 
 #### Scenario: Online check-in recorded locally prevents same-device duplicate after going offline
-- **WHEN** a CHECKER scans a valid QR code while online, the backend confirms with HTTP 200, and the device subsequently loses network connectivity
+- **WHEN** a CHECKER scans a valid QR code while online, the app writes it locally as PENDING_SYNC, the backend confirms with HTTP 200, the app updates the local record to SYNCED, and the device subsequently loses network connectivity
 - **THEN** any re-scan of the same ticket on the same device is rejected locally with "ALREADY USED" — the SYNCED record in local SQLite is the guard, not the network
 
 #### Scenario: Invalid or tampered QR code scanned
@@ -40,18 +42,20 @@ The checker mobile app SHALL record check-ins locally and provide pass/fail deci
 
 #### Scenario: App reconnects after offline period
 - **WHEN** the device regains network connectivity
-- **THEN** the app automatically flushes all PENDING_SYNC check-ins to the backend via `POST /checkins/batch` within 30 seconds
+- **THEN** the app automatically flushes all PENDING_SYNC check-ins to the backend via `POST /api/checkins/batch` within 30 seconds
 
 ### Requirement: Offline check-in sync is idempotent and conflict-free
 The backend SHALL process batched offline check-ins without creating duplicate records or allowing a ticket to be marked as checked-in more than once.
 
+API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-record result (`ok` or `conflict`). `GET /api/admin/concerts/{id}/checkin-conflicts` is ORGANIZER-only and ownership-scoped for post-event audit.
+
 #### Scenario: Batch sync with no conflicts
 - **WHEN** the checker app sends a batch of 50 offline check-ins to the backend
-- **THEN** the backend upserts all records, marks each ticket as checked-in using server timestamp, and returns success for each record
+- **THEN** the backend inserts one `checkins` row per ticket using server `checked_in_at` and any supplied device scan timestamp for audit, and returns success for each record
 
 #### Scenario: Batch sync with duplicate ticket
 - **WHEN** the checker app sends a batch containing a ticket ID already marked as checked-in by another device
-- **THEN** the backend rejects the duplicate entry, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, attempted timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
+- **THEN** the backend rejects the duplicate entry via the `checkins.ticket_id` UNIQUE constraint, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, attempted device scan timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
 
 #### Scenario: Conflict audit trail is preserved for post-event review
 - **WHEN** a conflict is recorded during batch sync
@@ -68,9 +72,11 @@ The backend SHALL process batched offline check-ins without creating duplicate r
 ### Requirement: VIP guests can be admitted via identity lookup
 An authenticated CHECKER SHALL be able to search for a VIP guest by name or phone number and mark them as admitted. VIP guest lookup requires network connectivity; the VIP entrance is an organizer responsibility to keep connected.
 
+API contract: `GET /api/vip-guests?concertId=&q=` searches active guests and `POST /api/vip-guests/{id}/enter` records admission. Both endpoints are CHECKER-only.
+
 #### Scenario: VIP guest found by phone number and admitted
 - **WHEN** a CHECKER searches by phone number and a matching VIP guest record is found with `entered = false`
-- **THEN** the backend returns the guest record, the CHECKER confirms the identity visually, submits `POST /checkin/vip/{vip_id}`, and the system sets `entered = true` with server timestamp; the app displays "ADMITTED — [Guest Name]"
+- **THEN** the backend returns the guest record, the CHECKER confirms the identity visually, submits `POST /api/vip-guests/{id}/enter`, and the system sets `entered = true` with server timestamp; the app displays "ADMITTED — [Guest Name]"
 
 #### Scenario: VIP guest found by name with multiple matches
 - **WHEN** a CHECKER searches by name and multiple records match

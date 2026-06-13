@@ -64,11 +64,13 @@ Each import SHALL treat the CSV as the authoritative full guest list for the con
 The import SHALL update only sponsor-supplied fields and SHALL NOT overwrite entry-status fields recorded at the gate.
 
 #### Scenario: Re-import does not un-admit an entered guest
-- **WHEN** a guest has already been marked ENTERED at the gate and an import (scheduled or manual) re-processes a file containing that guest
+- **WHEN** a guest already has `entered = true` from gate admission and an import (scheduled or manual) re-processes a file containing that guest
 - **THEN** the upsert updates sponsor fields (name, sponsor, zone) but leaves `entered` and `entered_at` unchanged; the guest is not reset to not-entered
 
 ### Requirement: Organizer can trigger import manually for late files
 The system SHALL provide an organizer-triggered manual import that runs the same pipeline on demand, to recover from files that arrive after the nightly window.
+
+API contract: `POST /api/admin/vip-imports` is ORGANIZER-only. Rows in a manual import must resolve by `event_code` to concerts owned by the requester; rows for unowned concerts are rejected/skipped with an audit reason.
 
 #### Scenario: File arrives after the nightly job ran
 - **WHEN** the sponsor's file arrives after 02:00 and an ORGANIZER triggers a manual import before the event
@@ -99,6 +101,8 @@ The import job SHALL skip individual bad rows with structured error logging and 
 ### Requirement: Checker staff can verify VIP guests at the gate
 At event time, a CHECKER SHALL be able to look up a guest by name or phone number to confirm their VIP guest list status.
 
+API contract: `GET /api/vip-guests?concertId=&q=` searches active guests by normalized phone or fuzzy name; `POST /api/vip-guests/{id}/enter` marks one active, not-yet-entered guest as entered. Both endpoints are CHECKER-only.
+
 #### Scenario: Guest found on VIP list
 - **WHEN** a CHECKER searches for a guest by phone number and the guest exists in `vip_guests` for that concert
 - **THEN** the app displays the guest's name, sponsor, and entry status (not yet entered / entered)
@@ -109,4 +113,4 @@ At event time, a CHECKER SHALL be able to look up a guest by name or phone numbe
 
 #### Scenario: VIP guest entry recorded
 - **WHEN** a CHECKER marks a guest as entered
-- **THEN** the system records the entry timestamp and the guest's status changes to ENTERED; subsequent scans show "Already entered at [time]"
+- **THEN** the system sets `entered = true`, records `entered_at`, and subsequent scans show "Already entered at [time]"

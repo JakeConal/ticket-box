@@ -3,6 +3,12 @@
 ### Requirement: System enforces three distinct roles
 The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — each with a clearly defined set of permitted actions. ORGANIZER is a superset of AUDIENCE (an organizer may also browse and purchase); CHECKER is disjoint from both (gate operations only).
 
+Endpoint groups:
+- AUDIENCE and ORGANIZER: `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability`, `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase`, `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets`.
+- ORGANIZER only with ownership checks: `/api/admin/concerts/**`, `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded`, `POST /api/admin/vip-imports`.
+- CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
+- Gateway callbacks: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` are unauthenticated but signature-verified and are not user-role endpoints.
+
 #### Scenario: AUDIENCE role permissions
 - **WHEN** a user with AUDIENCE role is authenticated
 - **THEN** the system allows: browse concerts, view concert detail, purchase tickets, view own orders and e-tickets; and denies: create/edit/cancel concerts, access admin dashboard, access QR scanner
@@ -32,6 +38,8 @@ The system SHALL include the user's role in the JWT access token and validate it
 
 ### Requirement: ORGANIZER actions are scoped to concerts they own
 Authorization for organizer write and publish actions SHALL combine the role check with an ownership check: holding the ORGANIZER role is necessary but not sufficient — the organizer must also own the target concert. This applies to editing/cancelling concerts, configuring ticket types, uploading PDFs, reviewing/editing/publishing/rejecting artist bios, and viewing revenue and orders.
+
+The ownership check also applies to `GET /api/admin/concerts/{id}/stats`, `GET /api/admin/concerts/{id}/checkin-conflicts`, `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded`, and manual VIP imports for rows resolving to owned concerts.
 
 #### Scenario: Organizer acts on their own concert
 - **WHEN** an ORGANIZER performs a write or publish action (e.g. publish an artist bio, edit ticket types) on a concert they created

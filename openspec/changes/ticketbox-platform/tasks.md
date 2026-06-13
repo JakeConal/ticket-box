@@ -15,15 +15,15 @@
 - [ ] 2.2 Create migration: `refresh_tokens` table (`id`, `user_id`, `token_hash`, `expires_at`, `revoked`)
 - [ ] 2.3 Create migration: `concerts` table (`id`, `name`, `description`, `venue`, `event_date`, `status` [DRAFT/PUBLISHED/CANCELLED], `event_code` [unique, human-readable code shared with sponsors for CSV import], `artist_bio`, `bio_status` [GENERATING/DRAFT/PUBLISHED/FAILED], `bio_generation_id` [version token for concurrent regeneration], `seat_map_svg`, `created_by`)
 - [ ] 2.4 Create migration: `ticket_types` table (`id`, `concert_id`, `name`, `zone`, `price`, `total_quantity`, `remaining_quantity`, `sale_opens_at`, `per_user_limit`)
-- [ ] 2.5 Create migration: `orders` table (`id`, `user_id`, `concert_id`, `status` [PENDING/PENDING_CONFIRMATION/PAID/FAILED/EXPIRED/REFUND_REQUIRED/REFUNDED], `idempotency_key`, `payment_provider`, `payment_ref`, `created_at`, `paid_at`)
+- [ ] 2.5 Create migration: `orders` table (`id`, `user_id`, `concert_id`, `status` [PENDING/PENDING_CONFIRMATION/PAID/FAILED/EXPIRED/REFUND_REQUIRED/REFUNDED], `idempotency_key`, `payment_provider`, `payment_ref`, `created_at`, `paid_at`) — `REFUND_REQUIRED`/`REFUNDED` are refund/audit states and do not mutate inventory
 - [ ] 2.6 Create migration: `order_items` table (`id`, `order_id`, `ticket_type_id`, `quantity`)
-- [ ] 2.7 Create migration: `tickets` table (`id`, `order_id`, `ticket_type_id`, `user_id`, `qr_token`, `checked_in`, `checked_in_at`)
-- [ ] 2.8 Create migration: `checkins` table (`id`, `ticket_id`, `checker_id`, `checked_in_at`, `device_id`, `synced_at`); unique constraint on `ticket_id`
+- [ ] 2.7 Create migration: `tickets` table (`id`, `order_id`, `ticket_type_id`, `user_id`, `qr_token`) — issued only when an order becomes PAID; check-in state is derived from `checkins`
+- [ ] 2.8 Create migration: `checkins` table (`id`, `ticket_id`, `checker_id`, `checked_in_at` [server timestamp], `device_id`, `scanned_at_device` [nullable device timestamp for offline audit]); unique constraint on `ticket_id`
 - [ ] 2.9 Create migration: `vip_guests` table (`id`, `concert_id`, `name`, `phone_normalized`, `sponsor`, `zone`, `active` [default true; soft-delete flag for snapshot reconciliation], `entered`, `entered_at`)
 - [ ] 2.10 Add indexes: `orders(user_id, concert_id)`, `tickets(qr_token)` unique, `order_items(order_id, ticket_type_id)`, `vip_guests(concert_id, phone_normalized)` unique
-- [ ] 2.11 Create migration: `checkin_conflicts` table (`id`, `ticket_id`, `attempted_by` (checker user_id), `attempted_at`, `device_id`, `winning_checked_in_at`); index on `ticket_id` and `attempted_by`
+- [ ] 2.11 Create migration: `checkin_conflicts` table (`id`, `ticket_id`, `attempted_by` (checker user_id), `attempted_at` [device scan timestamp], `device_id`, `winning_checked_in_at`); index on `ticket_id` and `attempted_by`
 - [ ] 2.12 Create migration: `idempotency_keys` table (`key` UNIQUE, `order_id`, `result` [serialized response], `created_at`) — durable first-writer-wins guard for purchase idempotency (D6); Redis is only the fast-path cache
-- [ ] 2.13 Create migration: `notification_outbox` table (`id`, `order_id`, `event_type`, `payload`, `status` [PENDING/SENT/FAILED], `attempts`, `created_at`, `sent_at`) — transactional outbox for must-arrive e-ticket delivery (D14)
+- [ ] 2.13 Create migration: `notification_outbox` table (`id`, `order_id`, `event_type`, `payload`, `status` [PENDING/SENT/FAILED], `attempts`, `created_at`, `sent_at`) — transactional outbox for must-arrive e-ticket delivery (D14); FAILED rows remain retryable/auditable until delivered or manually remediated
 - [ ] 2.14 Create migration: `import_files` table (`id`, `file_name`, `content_hash` UNIQUE, `processed_at`, `summary`) — content-hash registry so archived CSV files are skipped on future runs
 
 ## 3. Authentication & RBAC
@@ -44,22 +44,23 @@
 - [ ] 4.2 Implement `GET /api/concerts/{id}` — concert detail with ticket types; PUBLISHED concerts only (404 for DRAFT unless requester is the owning ORGANIZER); Redis cache (TTL 60s), active invalidation on update
 - [ ] 4.3 Implement `POST /api/admin/concerts` — ORGANIZER only; create concert with metadata and SVG seat map; status starts at DRAFT (not publicly visible)
 - [ ] 4.4 Implement `PUT /api/admin/concerts/{id}` — ORGANIZER only; update concert metadata; invalidate detail + listing cache
-- [ ] 4.5 Implement `DELETE /api/admin/concerts/{id}` — ORGANIZER only; set status CANCELLED; invalidate caches; trigger cancellation notification
+- [ ] 4.5 Implement `DELETE /api/admin/concerts/{id}` — ORGANIZER only; set concert status CANCELLED; transition existing PAID orders for that concert to REFUND_REQUIRED without restoring inventory; invalidate caches; trigger cancellation notification
 - [ ] 4.6 Implement `POST /api/admin/concerts/{id}/ticket-types` — ORGANIZER only; create ticket type with per-user limit validation
-- [ ] 4.7 Implement `PUT /api/admin/concerts/{id}/ticket-types/{typeId}` — ORGANIZER only; update ticket type config
+- [ ] 4.7 Implement `PUT /api/admin/concerts/{id}/ticket-types/{typeId}` — ORGANIZER only; update ticket type config; after any committed `remaining_quantity` change, invalidate `tickets:available:{ticketTypeId}`
 - [ ] 4.8 Implement `GET /api/admin/concerts/{id}/stats` — ORGANIZER only; revenue total, tickets sold per type, check-in count
 - [ ] 4.9 Implement `POST /api/admin/concerts/{id}/publish` — ORGANIZER only (ownership-checked); validate the concert has at least one ticket type and required metadata, transition DRAFT → PUBLISHED, invalidate listing cache; return 409 if not in DRAFT status
-- [ ] 4.10 Write unit tests for concert validation (missing fields, past event date rejection, per-user limit > quantity rejection) and lifecycle (DRAFT invisible publicly, publish makes it visible, publish of non-DRAFT returns 409)
+- [ ] 4.10 Implement `GET /api/concerts/{id}/availability` — public read endpoint for display-only availability by ticket type/zone; served from the short-TTL availability cache and never used by the purchase write path for correctness
+- [ ] 4.11 Write unit tests for concert validation (missing fields, past event date rejection, per-user limit > quantity rejection), lifecycle (DRAFT invisible publicly, publish makes it visible, publish of non-DRAFT returns 409), and availability route cache behavior
 
 ## 5. Ticket Purchase & Inventory
 
-- [ ] 5.1 Implement `POST /api/tickets/purchase` — authenticated users (AUDIENCE; ORGANIZER inherits AUDIENCE permissions); validate sale window, check `Idempotency-Key` header, require a valid waiting-queue admission token while a sale-open queue is active (see section 18)
-- [ ] 5.2 Implement conditional atomic inventory decrement (D3): single statement `UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`; 0 rows affected → HTTP 409 sold out, no order created (no `SELECT FOR UPDATE` lock-read-write sequence)
+- [ ] 5.1 Implement `POST /api/tickets/purchase` — authenticated users (AUDIENCE; ORGANIZER inherits AUDIENCE permissions); validate sale window, use client-supplied `Idempotency-Key` or generate one server-side when missing, require a valid waiting-queue admission token while a sale-open queue is active (see section 17)
+- [ ] 5.2 Implement conditional atomic inventory decrement (D3): single statement `UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`; 0 rows affected → HTTP 409 sold out, no order created (no `SELECT FOR UPDATE` lock-read-write sequence); after the committed decrement, invalidate `tickets:available:{ticketTypeId}`
 - [ ] 5.3 Implement per-user limit gate: Redis `INCRBY` on `limit:{userId}:{concertId}:{ticketTypeId}`; reject if exceeds limit before DB transaction
 - [ ] 5.4 Implement DB-level guard (D4): inside the purchase transaction, count the user's `order_items` across orders with status IN (PENDING, PENDING_CONFIRMATION, PAID) for that ticket type; reject if count + new quantity exceeds limit (use a per-user advisory lock or serializable isolation on the count)
 - [ ] 5.5 On successful inventory decrement: create order (status PENDING), create order items, return `{orderId, paymentUrl}`
-- [ ] 5.6 Implement order expiry job (D3 lifecycle): scheduled job transitions PENDING orders older than 8 minutes and PENDING_CONFIRMATION orders older than 15 minutes to EXPIRED, restores inventory (`remaining_quantity += qty`), and decrements the Redis per-user limit counter for each released order item; use `SELECT ... FOR UPDATE SKIP LOCKED` to claim stale orders without contending with live purchases
-- [ ] 5.7 Decrement the Redis per-user limit counter on every order release path (FAILED via gateway callback, EXPIRED via expiry job); never decrement on PAID — keeps the fast gate consistent with the DB source of truth
+- [ ] 5.6 Implement order expiry job (D3 lifecycle): scheduled job transitions PENDING orders older than 8 minutes and PENDING_CONFIRMATION orders older than 15 minutes to EXPIRED, restores inventory (`remaining_quantity += qty`), invalidates `tickets:available:{ticketTypeId}` after each committed restore, and decrements the Redis per-user limit counter for each released order item; use `SELECT ... FOR UPDATE SKIP LOCKED` to claim stale orders without contending with live purchases
+- [ ] 5.7 Decrement the Redis per-user limit counter on every order release path (FAILED via gateway callback, EXPIRED via expiry job); after any committed `remaining_quantity += qty` release, invalidate `tickets:available:{ticketTypeId}`; never decrement on PAID — keeps the fast gate consistent with the DB source of truth
 - [ ] 5.8 Write concurrency integration test: 200 threads simultaneously purchasing the last SVIP ticket — assert exactly 1 succeeds
 - [ ] 5.9 Write per-user limit concurrency test: same user sends 5 concurrent requests for 1 ticket each (limit = 2) — assert at most 2 succeed
 
@@ -69,13 +70,13 @@
 - [ ] 6.2 Implement `VNPayGatewayService`: build signed payment URL, verify HMAC-SHA512 callback signature
 - [ ] 6.3 Implement `MoMoGatewayService`: build signed payment URL, verify RSA/HMAC callback signature
 - [ ] 6.4 Wrap all gateway calls with Resilience4j `@CircuitBreaker`: 5 failures / 10s → OPEN; 30s cooldown → HALF-OPEN probe
-- [ ] 6.5 Implement `GET /api/payments/vnpay/callback` and `GET /api/payments/momo/callback` — verify signature, update order status, trigger post-payment flow
+- [ ] 6.5 Implement gateway callback endpoints: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` — unauthenticated but signature-verified; update order status and trigger post-payment flow only after signature validation
 - [ ] 6.6 Implement two-layer idempotency key store (D6): durable PostgreSQL `idempotency_keys` table is the source of truth — claim the key inside the purchase transaction with `INSERT ... ON CONFLICT DO NOTHING` (first-writer-wins); Redis (24h TTL) is the fast-path cache only; on duplicate, return the stored result without creating a new payment session
 - [ ] 6.7 Implement PENDING_CONFIRMATION flow: on webhook delivery timeout after the user was redirected, set order status to PENDING_CONFIRMATION (inventory stays reserved); reconcile when the delayed webhook arrives
 - [ ] 6.8 Implement active gateway reconciliation: before the expiry job transitions a PENDING_CONFIRMATION order to EXPIRED, query the gateway's transaction-status API (VNPAY `querydr` / MoMo transaction query); if the gateway reports success, mark PAID instead of expiring
 - [ ] 6.9 Handle success webhook (or query result) arriving for an already-EXPIRED order: the seat was released and may be resold, so do NOT re-grant inventory — mark the order REFUND_REQUIRED, alert the organizer/support via the admin dashboard, and notify the user that a refund is owed (refund execution itself is manual/out-of-band, per design Non-Goals)
 - [ ] 6.10 Implement `GET /api/orders/{id}` — polling endpoint so frontend can check order status after redirect
-- [ ] 6.11 Implement refund administration endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/orders?status=REFUND_REQUIRED` lists orders awaiting manual refund; `POST /api/admin/orders/{id}/mark-refunded` transitions REFUND_REQUIRED → REFUNDED for audit (money movement happens manually in the gateway merchant portal, per design Non-Goals)
+- [ ] 6.11 Implement refund administration endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/orders?concertId=&status=REFUND_REQUIRED` lists orders awaiting manual refund for owned concerts only; `POST /api/admin/orders/{id}/mark-refunded` transitions REFUND_REQUIRED → REFUNDED for audit after ownership verification (money movement happens manually in the gateway merchant portal, per design Non-Goals)
 - [ ] 6.12 Write tests: circuit breaker state transitions, idempotency dedup with Redis down (durable UNIQUE constraint still admits exactly one), timeout-then-webhook reconciliation, gateway-query-before-expiry, success-webhook-after-EXPIRED marks REFUND_REQUIRED without restoring inventory, mark-refunded transition
 
 ## 7. QR E-Ticket Generation
@@ -83,12 +84,12 @@
 - [ ] 7.1 Implement `QrTokenService`: generate JWT-signed payload `{ticketId, orderId, userId, concertId, ticketType, issuedAt}` signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred, RS256 acceptable; include `kid` header for key rotation); the private signing key lives server-side only (D8)
 - [ ] 7.2 On order transition to PAID: generate one QR token per ticket, store in `tickets.qr_token`
 - [ ] 7.3 Implement `GET /api/orders/{id}/tickets` — return list of tickets with QR token (base64 PNG or SVG) for display in frontend
-- [ ] 7.4 Expose `GET /api/checker/key-bundle?concert_id=X` — CHECKER only; returns the **public** verification key(s) keyed by `kid` + concert validity window; the private signing key is never sent to devices, so a compromised device cannot forge tickets; app stores the bundle in OS secure storage (Keychain on iOS, Keystore on Android)
+- [ ] 7.4 Expose `GET /api/checker/key-bundle?concertId=X` — CHECKER only; returns the **public** verification key(s) keyed by `kid` + concert validity window; the private signing key is never sent to devices, so a compromised device cannot forge tickets; app stores the bundle in OS secure storage (Keychain on iOS, Keystore on Android)
 - [ ] 7.5 Write test: verify QR token is unique per ticket, verify tampered token fails validation
 
 ## 8. Offline Check-in (Mobile App)
 
-- [ ] 8.1 Implement React Native checker app login screen: call `POST /api/auth/login`, store JWT in SecureStorage; on login call `GET /api/checker/key-bundle` and store the public verification key bundle (keyed by `kid`) in Keychain (iOS) / Keystore (Android); refresh the bundle whenever the device is online
+- [ ] 8.1 Implement React Native checker app login screen: call `POST /api/auth/login`, store JWT in SecureStorage; on login call `GET /api/checker/key-bundle?concertId=X` for assigned concerts and store the public verification key bundle (keyed by `kid`) in Keychain (iOS) / Keystore (Android); refresh the bundle whenever the device is online
 - [ ] 8.2 Implement QR scanner screen using `react-native-camera` or `expo-barcode-scanner`
 - [ ] 8.3 Implement local SQLite schema: `local_checkins(ticket_id, scanned_at, checker_id, device_id, sync_status)` where `sync_status` is one of SYNCED / PENDING_SYNC / CONFLICT; unique constraint on `ticket_id`
 - [ ] 8.4 On every scan (online and offline): verify the asymmetric JWT signature (EdDSA/RS256) with the public key from secure storage (selected by `kid`); check `local_checkins` for existing record on `ticket_id`; if found, display ALREADY USED — do not proceed regardless of network state
@@ -98,7 +99,8 @@
 - [ ] 8.8 Implement `POST /api/checkins/batch` on backend: for each record attempt idempotent upsert (`INSERT ... ON CONFLICT (ticket_id) DO NOTHING`); on conflict INSERT into `checkin_conflicts` table capturing `ticket_id`, `attempted_by`, `device_id`, `attempted_at`, `winning_checked_in_at`; return per-record result (ok / conflict)
 - [ ] 8.9 Implement VIP guest lookup screen (online-only): search bar accepting name (fuzzy, diacritic-insensitive) or phone number (exact after normalization); call `GET /api/vip-guests?concertId=&q=`; display list of matches for checker to disambiguate; "Mark as Entered" button calls `POST /api/vip-guests/{id}/enter`; if device offline display "No connection — VIP lookup requires network"
 - [ ] 8.10 Implement VIP already-admitted and not-found responses in the app: display "ALREADY ADMITTED — Entered at [timestamp]" on 409; display "NOT ON GUEST LIST — Contact organizer" on 404
-- [ ] 8.11 Write test: scan → offline store → reconnect → sync → verify backend state matches; write test: online scan → device goes offline → re-scan same ticket → assert ALREADY USED from local SQLite
+- [ ] 8.11 Implement `GET /api/admin/concerts/{id}/checkin-conflicts` — ORGANIZER only (ownership-scoped); return conflict attempts for one owned concert for the admin audit page
+- [ ] 8.12 Write test: scan → offline store → reconnect → sync → verify backend state matches; write test: online scan → device goes offline → re-scan same ticket → assert ALREADY USED from local SQLite; wrong-role access to checker/admin conflict routes returns 403
 
 ## 9. Notifications
 
@@ -108,7 +110,7 @@
 - [ ] 9.4 Implement `NotificationService`: iterate all registered `NotificationChannel` beans; catch per-channel exceptions and continue
 - [ ] 9.5 Implement retry logic for failed email sends: up to 3 retries with exponential backoff; failure does not affect order status
 - [ ] 9.6 Implement scheduled 24h reminder job: `@Scheduled` cron; query concerts starting in 22–26 hours; dispatch reminder events for all PAID ticket holders
-- [ ] 9.7 Implement transactional outbox for must-arrive e-ticket delivery (D14): write a `notification_outbox` row in the same DB transaction that marks the order PAID; a scheduled worker polls PENDING outbox rows and delivers via the email channel with retry until acknowledged (status SENT), incrementing `attempts` and backing off on failure
+- [ ] 9.7 Implement transactional outbox for must-arrive e-ticket delivery (D14): write a `notification_outbox` row in the same DB transaction that marks the order PAID; a scheduled worker polls PENDING/FAILED outbox rows and delivers via the email channel with retry until acknowledged (status SENT), incrementing `attempts` and backing off on failure
 - [ ] 9.8 Wire notification dispatch into: post-payment flow (e-ticket confirmation via outbox; in-app toast fire-and-forget via Redis Pub/Sub), concert cancellation handler (cancellation notice), 24h reminder job (best-effort Pub/Sub)
 - [ ] 9.9 Write test: verify email channel failure does not propagate exception to caller; verify reminder job fires for correct concerts; verify an outbox row written before a simulated crash is still delivered by the worker after restart
 
@@ -125,7 +127,7 @@
 
 - [ ] 11.1 Implement `ConcertCacheService`: cache-aside for concert listing (key: `concerts:list:page:{n}`, TTL 5 min) and detail (key: `concerts:detail:{id}`, TTL 60s)
 - [ ] 11.2 Implement active cache invalidation: on create/update/cancel concert, delete `concerts:list:*` keys and `concerts:detail:{id}`
-- [ ] 11.3 Implement ticket availability cache: key `tickets:available:{ticketTypeId}`, TTL 10s; read-through on miss; delete on confirmed purchase
+- [ ] 11.3 Implement ticket availability cache: key `tickets:available:{ticketTypeId}`, TTL 10s; read-through on miss; delete after every committed `remaining_quantity` mutation, including reservation/order creation, release on FAILED/EXPIRED, and admin ticket quantity changes
 - [ ] 11.4 Ensure purchase endpoint never reads from cache: inventory enforcement always goes through the PostgreSQL conditional atomic decrement (D3); cached availability is display-only
 - [ ] 11.5 Write test: verify cache hit returns same data; verify cache is invalidated within TTL after concert update
 
@@ -137,10 +139,10 @@
 - [ ] 12.4 Implement Gemini API call behind an `ArtistBioGenerator` interface: send cleaned text (capped to stay within free-tier token limits) with a structured prompt that delimits the press-kit text as untrusted data (prompt-injection hardening); parse response
 - [ ] 12.5 On successful API response: save generated text as `bio_status = DRAFT` (NOT public); write only if the task's `bio_generation_id` is still the latest (discard stale late completions)
 - [ ] 12.6 Implement retry: up to 2 retries on Gemini API error (including free-tier 429 quota errors) with exponential backoff; after all fail, set `bio_status = FAILED`
-- [ ] 12.7 Implement review endpoints — ORGANIZER only: `GET` draft for review, `PUT` to edit draft text, `POST .../publish` → `bio_status = PUBLISHED` + invalidate concert detail cache, `POST .../reject`
+- [ ] 12.7 Implement review endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/concerts/{id}/artist-bio` for draft/status/error review, `PUT /api/admin/concerts/{id}/artist-bio` to edit draft text, `POST /api/admin/concerts/{id}/artist-bio/publish` → `bio_status = PUBLISHED` + invalidate concert detail cache, `POST /api/admin/concerts/{id}/artist-bio/reject`
 - [ ] 12.8 Implement a scheduled reaper: transition any `GENERATING` row older than the threshold (e.g. 5 min) out of GENERATING (re-queue or FAILED) so restarts don't strand bios
 - [ ] 12.9 Rate-limit regenerations per concert/organizer so repeated uploads cannot drain the free-tier quota
-- [ ] 12.10 Expose `bio_status` and the bio text in `GET /api/concerts/{id}` so the public page shows the bio ONLY when PUBLISHED (placeholder otherwise); admin endpoint exposes DRAFT for review
+- [ ] 12.10 Expose `bio_status` and the bio text in `GET /api/concerts/{id}` so the public page shows the bio ONLY when PUBLISHED (placeholder otherwise); `GET /api/admin/concerts/{id}/artist-bio` exposes DRAFT/FAILED/GENERATING details for organizer review
 - [ ] 12.11 Write tests: mock the Gemini API; verify success sets DRAFT (not public); image-only PDF sets FAILED; 429 sets FAILED "AI service busy"; non-PDF-by-magic-bytes rejected; stale late completion is discarded; reaper clears a stuck GENERATING row; only PUBLISHED bio appears on the public page
 
 ## 13. VIP Guest CSV Import
@@ -148,13 +150,13 @@
 - [ ] 13.1 Implement `VipGuestImportJob` `@Scheduled` at `0 0 2 * * *` (02:00 daily): scan configured import directory for CSV files
 - [ ] 13.2 Implement CSV parser using OpenCSV: case-insensitive header mapping, trim whitespace, skip blank rows
 - [ ] 13.3 Implement phone normalizer (strip spaces/dashes, resolve `0` ↔ `+84` prefix to one canonical form) with unit tests — it anchors upsert idempotency (D12); rows missing the phone column are skipped with a logged reason
-- [ ] 13.4 Implement per-row `event_code → concert_id` resolution against the `concerts` table: unresolvable rows are skipped with a logged reason; if every row in the file is unresolvable, quarantine the whole file to `import-errors/` with an admin alert — never guess a concert
+- [ ] 13.4 Implement per-row `event_code → concert_id` resolution against the `concerts` table: unresolvable rows are skipped with a logged reason; if every row in the file is unresolvable, quarantine the whole file to `error/` with an admin alert — never guess a concert
 - [ ] 13.5 Implement idempotent field-level upsert: `INSERT INTO vip_guests ... ON CONFLICT (concert_id, phone_normalized) DO UPDATE SET` sponsor-supplied columns only (name, sponsor, zone, active); never touch system-owned `entered` / `entered_at`
 - [ ] 13.6 Implement snapshot reconciliation scoped to concerts present in the file: after upserting, set `active = false` (soft delete) on `vip_guests` rows absent from the file, only for the concerts the file actually contains — never deactivate guests of concerts the file does not mention
 - [ ] 13.7 Implement per-row error handling: catch parse/validation exceptions per row; log row number and reason; continue to next row
-- [ ] 13.8 Implement file-level error handling: if CSV is entirely unparseable, move to `import-errors/` archive dir; log alert
+- [ ] 13.8 Implement file-level error handling: if CSV is entirely unparseable, move to `error/` archive dir; log alert
 - [ ] 13.9 Implement file lifecycle: move successfully processed files to `processed/` and record their content hash in `import_files`; skip already-seen hashes on future runs
-- [ ] 13.10 Implement `POST /api/admin/vip-imports` — ORGANIZER only; manual on-demand import running the same pipeline (resolution, upsert, reconciliation, archiving) for files that arrive after the nightly window
+- [ ] 13.10 Implement `POST /api/admin/vip-imports` — ORGANIZER only; manual on-demand import running the same pipeline (resolution, upsert, reconciliation, archiving) for files that arrive after the nightly window; rows resolving to concerts not owned by the requester are rejected/skipped with an audit reason
 - [ ] 13.11 Log import summary after each run: total rows processed, inserted, updated, deactivated, skipped, errored
 - [ ] 13.12 Implement `GET /api/vip-guests` — CHECKER only; search by `concertId` + `q` (phone exact match after normalization, or name fuzzy match using `unaccent()` + `ilike`); only `active = true` guests are admissible; return list of matches with `id`, `name`, `phone_normalized` (partial), `entered`, `entered_at`
 - [ ] 13.13 Implement `POST /api/vip-guests/{id}/enter` — CHECKER only; conditional `UPDATE vip_guests SET entered=true, entered_at=now() WHERE id=? AND entered=false AND active=true`; return 409 if 0 rows affected (already admitted or deactivated)

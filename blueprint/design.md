@@ -18,6 +18,21 @@ Lý do chọn thay vì microservices: đạt được lợi ích phân tách dom
 | PostgreSQL 16 | Nguồn chân lý bền vững | Mọi dữ liệu nghiệp vụ + guard bền (idempotency, outbox) |
 | Redis 7 | Tầng tốc độ | Cache-aside, rate limit, waiting queue, idempotency fast-path, Pub/Sub |
 
+**Chuẩn REST API:** mọi endpoint backend đều nằm dưới prefix `/api/**`; các route không có `/api` như `/admin/**`, `/concerts/[id]`, `/orders/[id]` là route frontend. Contract endpoint chính:
+
+| Nhóm | Endpoint | Quyền |
+| :--- | :--- | :--- |
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh` | Public / refresh-token flow |
+| Public concert | `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` | Public cho PUBLISHED; `GET /api/concerts/{id}` trả DRAFT chỉ khi requester là owner ORGANIZER |
+| Queue + purchase | `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase` | AUDIENCE hoặc ORGANIZER; purchase dùng `Idempotency-Key` client gửi hoặc server sinh, và cần admission token khi queue active |
+| Orders/e-ticket | `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets` | Chủ order; ORGANIZER chỉ xem order thuộc concert mình sở hữu qua admin |
+| Payment callback | `GET /api/payments/vnpay/callback`, `POST /api/payments/momo/callback` | Không dùng JWT; bắt buộc verify chữ ký gateway |
+| Admin concert | `POST /api/admin/concerts`, `PUT /api/admin/concerts/{id}`, `DELETE /api/admin/concerts/{id}`, `POST /api/admin/concerts/{id}/publish`, `POST /api/admin/concerts/{id}/ticket-types`, `PUT /api/admin/concerts/{id}/ticket-types/{typeId}`, `GET /api/admin/concerts/{id}/stats`, `GET /api/admin/concerts/{id}/checkin-conflicts` | ORGANIZER + ownership |
+| AI bio | `POST /api/admin/concerts/{id}/artist-pdf`, `GET /api/admin/concerts/{id}/artist-bio`, `PUT /api/admin/concerts/{id}/artist-bio`, `POST /api/admin/concerts/{id}/artist-bio/publish`, `POST /api/admin/concerts/{id}/artist-bio/reject` | ORGANIZER + ownership |
+| Refund/admin orders | `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded` | ORGANIZER + ownership; refund money movement manual |
+| Checker | `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
+| VIP import | `POST /api/admin/vip-imports` | ORGANIZER; rows must resolve to concerts owned by requester |
+
 **Khi một phần gặp sự cố, phần còn lại bị ảnh hưởng ra sao** (phân tích blast-radius):
 
 | Sự cố | Ảnh hưởng | Phần vẫn hoạt động |
@@ -91,9 +106,11 @@ erDiagram
     users ||--o{ refresh_tokens : ""
     users ||--o{ concerts : "tạo (organizer)"
     concerts ||--|{ ticket_types : "có"
+    concerts ||--o{ orders : "được đặt"
     concerts ||--o{ vip_guests : "guest list"
     orders ||--|{ order_items : "gồm"
     order_items }o--|| ticket_types : "loại vé"
+    tickets }o--|| ticket_types : "loại vé"
     orders ||--o{ tickets : "sinh khi PAID"
     orders ||--o| idempotency_keys : "claim"
     orders ||--o{ notification_outbox : "e-ticket must-arrive"
@@ -103,16 +120,23 @@ erDiagram
     users { uuid id PK
             text email UK
             text password_hash
-            text role "AUDIENCE|ORGANIZER|CHECKER" }
+            text role "AUDIENCE|ORGANIZER|CHECKER"
+            timestamptz created_at }
     concerts { uuid id PK
                text name
+               text description
+               text venue
+               timestamptz event_date
                text status "DRAFT|PUBLISHED|CANCELLED"
                text event_code UK "mã chia sẻ với sponsor"
+               text artist_bio
                text bio_status "GENERATING|DRAFT|PUBLISHED|FAILED"
                bigint bio_generation_id
+               text seat_map_svg
                uuid created_by FK }
     ticket_types { uuid id PK
                    uuid concert_id FK
+                   text name
                    text zone "GA|SVIP|VIP|CAT1|CAT2"
                    numeric price
                    int total_quantity
@@ -121,46 +145,64 @@ erDiagram
                    int per_user_limit }
     orders { uuid id PK
              uuid user_id FK
+             uuid concert_id FK
              text status "PENDING|PENDING_CONFIRMATION|PAID|FAILED|EXPIRED|REFUND_REQUIRED|REFUNDED"
              text idempotency_key
-             text payment_provider }
+             text payment_provider
+             text payment_ref
+             timestamptz created_at
+             timestamptz paid_at }
     order_items { uuid id PK
                   uuid order_id FK
                   uuid ticket_type_id FK
                   int quantity }
     tickets { uuid id PK
               uuid order_id FK
-              text qr_token UK "JWT ký EdDSA"
-              bool checked_in }
+              uuid ticket_type_id FK
+              uuid user_id FK
+              text qr_token UK "JWT ký EdDSA" }
     checkins { uuid id PK
                uuid ticket_id FK "UNIQUE — chống vào 2 lần"
                uuid checker_id FK
                text device_id
+               timestamptz scanned_at_device
                timestamptz checked_in_at "server time" }
     checkin_conflicts { uuid id PK
                         uuid ticket_id FK
                         uuid attempted_by FK
+                        text device_id
+                        timestamptz attempted_at "device scan time"
                         timestamptz winning_checked_in_at }
     vip_guests { uuid id PK
                  uuid concert_id FK
+                 text name
                  text phone_normalized "UK với concert_id"
+                 text sponsor
+                 text zone
                  bool active "soft-delete khi reconcile"
-                 bool entered "system-owned" }
+                 bool entered "system-owned"
+                 timestamptz entered_at }
     idempotency_keys { text key PK "UNIQUE — guard bền"
                        uuid order_id
-                       jsonb result }
+                       jsonb result
+                       timestamptz created_at }
     notification_outbox { uuid id PK
                           uuid order_id FK
+                          text event_type
+                          jsonb payload
                           text status "PENDING|SENT|FAILED"
-                          int attempts }
+                          int attempts
+                          timestamptz created_at
+                          timestamptz sent_at }
     refresh_tokens { uuid id PK
                      uuid user_id FK
                      text token_hash
+                     timestamptz expires_at
                      bool revoked }
 ```
 
 Các ràng buộc gánh tính đúng (correctness-bearing):
-- `ticket_types.remaining_quantity` — chỉ thay đổi qua `UPDATE ... SET remaining = remaining - :qty WHERE remaining >= :qty` (không bao giờ âm).
+- `ticket_types.remaining_quantity` — chỉ thay đổi qua `UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty` hoặc các release/admin-adjust path tương ứng (không bao giờ âm; không vượt `total_quantity`).
 - `checkins.ticket_id` UNIQUE — một vé chỉ vào cổng một lần (toàn cục).
 - `idempotency_keys.key` UNIQUE — một purchase attempt chỉ tạo một payment session, kể cả khi Redis chết.
 - `vip_guests (concert_id, phone_normalized)` UNIQUE — danh tính khách mời neo theo SĐT chuẩn hóa, không theo tên.
@@ -180,9 +222,9 @@ sequenceDiagram
     U->>Q: Vào hàng đợi lúc mở bán (FIFO theo thời điểm đến)
     Q-->>U: "Bạn ở vị trí #14.203"
     Q->>U: Admission token (TTL 2–3 phút) khi đến lượt
-    U->>API: POST /tickets/purchase (token + Idempotency-Key)
+    U->>API: POST /api/tickets/purchase (admission token + Idempotency-Key)
     API->>API: Rate limit (Token Bucket) + per-user gate (Redis INCRBY)
-    API->>PG: TRANSACTION: claim idempotency key (ON CONFLICT DO NOTHING)<br/>+ đếm vé đã giữ của user (limit check)<br/>+ UPDATE remaining = remaining - q WHERE remaining >= q<br/>+ tạo order PENDING
+    API->>PG: TRANSACTION: claim idempotency key (ON CONFLICT DO NOTHING)<br/>+ đếm vé đã giữ của user (limit check)<br/>+ UPDATE ticket_types SET remaining_quantity = remaining_quantity - q WHERE remaining_quantity >= q<br/>+ tạo order PENDING
     PG-->>API: commit (hoặc 409 nếu hết vé / vượt limit)
     API->>GW: Tạo payment URL (Circuit Breaker, timeout 10s)
     GW-->>U: Trang thanh toán → user trả tiền
@@ -199,6 +241,7 @@ sequenceDiagram
 | User bỏ ngang sau khi có URL | Expiry job: PENDING quá 8 phút → EXPIRED, hoàn inventory + quota (nếu không có job này, vài nghìn checkout bỏ ngang khóa hết 200 ghế SVIP) |
 | Đã trả tiền nhưng webhook không đến | Order → PENDING_CONFIRMATION, **ghế giữ nguyên**; trước khi expire (15 phút) job chủ động query API trạng thái giao dịch của gateway |
 | Webhook thành công đến sau khi đơn đã EXPIRED | Ghế có thể đã bán lại → **không bao giờ** cấp lại ghế; order → REFUND_REQUIRED, organizer hoàn tiền thủ công, user được thông báo |
+| Organizer hủy concert đã có vé PAID | Concert → CANCELLED; các order PAID của concert → REFUND_REQUIRED để xử lý hoàn tiền thủ công; không restore inventory vì sự kiện đã bị hủy |
 | User bấm mua nhiều lần / retry | Idempotency key: trả lại kết quả cũ, không tạo phiên thanh toán mới — guard bền là UNIQUE constraint trong PostgreSQL, vẫn đúng khi Redis chết |
 
 ### 5.2 Luồng soát vé khi mất mạng và đồng bộ lại
@@ -217,7 +260,7 @@ sequenceDiagram
     APP->>SQL: Tra ticket_id — nếu đã có (SYNCED/PENDING_SYNC/CONFLICT) → "ALREADY USED"
     APP->>SQL: Ghi record PENDING_SYNC (local-first, luôn ghi trước)
     alt Online
-        APP->>API: POST /checkins/{ticketId} (đồng bộ, chờ kết quả)
+        APP->>API: POST /api/checkins/{ticketId} (đồng bộ, chờ kết quả)
         API->>PG: INSERT checkins ON CONFLICT (ticket_id) DO NOTHING
         alt 200 OK
             APP->>SQL: status → SYNCED, hiển thị VALID ✅
@@ -230,7 +273,7 @@ sequenceDiagram
         APP->>APP: Hiển thị VALID ngay (không gọi mạng)
     end
     Note over APP,API: Khi có mạng trở lại (≤30s)
-    APP->>API: POST /checkins/batch (tất cả PENDING_SYNC)
+    APP->>API: POST /api/checkins/batch (tất cả PENDING_SYNC)
     API->>PG: Upsert idempotent từng record;<br/>trùng → ghi checkin_conflicts (ai quét, thiết bị nào, lệch bao lâu)
     API-->>APP: Kết quả per-record → SYNCED hoặc CONFLICT
 ```
@@ -294,10 +337,10 @@ Trùng key → trả lại đúng kết quả cũ (cùng order ID), không tạo
 | :--- | :--- | :--- |
 | Danh sách concert | 5 phút | Khi tạo/sửa/publish/hủy concert |
 | Chi tiết concert (kèm loại vé) | 60 giây | Khi sửa concert, khi publish bio |
-| Số vé còn lại per loại | 10 giây | **Sau mỗi giao dịch mua thành công** |
+| Số vé còn lại per loại | 10 giây | **Sau mỗi thay đổi committed của `remaining_quantity`**: giữ vé khi tạo order, hoàn vé khi `FAILED`/`EXPIRED`, hoặc admin chỉnh số lượng |
 | Endpoint mua vé / checkout | Không cache | — |
 
-Cache-aside (lazy load khi miss, ghi lại với TTL) thay vì write-through vì dữ liệu đọc nhiều ghi ít và chấp nhận stale có giới hạn. Nguyên tắc an toàn: **cache chỉ phục vụ hiển thị** — quyết định bán vé luôn đi qua atomic conditional UPDATE trong PostgreSQL, nên cache stale tệ nhất chỉ làm user thấy "còn vé" rồi nhận 409, không bao giờ gây oversell; TTL 10 giây chặn trên độ stale ngay cả khi một lần invalidation bị lỡ.
+Cache-aside (lazy load khi miss, ghi lại với TTL) thay vì write-through vì dữ liệu đọc nhiều ghi ít và chấp nhận stale có giới hạn. Nguyên tắc an toàn: **cache chỉ phục vụ hiển thị** — quyết định bán vé luôn đi qua atomic conditional UPDATE trong PostgreSQL, không bao giờ đọc availability từ cache. Vì hệ thống reserve-on-create, invalidation xảy ra ngay sau mọi mutation của `remaining_quantity` chứ không chờ đơn PAID; TTL 10 giây chặn trên độ stale ngay cả khi một lần invalidation bị lỡ.
 
 ---
 

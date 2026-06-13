@@ -17,7 +17,7 @@ After a successful ticket purchase, the system SHALL send a confirmation notific
 
 #### Scenario: E-ticket delivery survives a process crash (must-arrive via outbox)
 - **WHEN** an order transitions to PAID
-- **THEN** the e-ticket notification intent is written to a transactional outbox in the same database transaction that marks the order PAID; a worker delivers it with retry until acknowledged, so the e-ticket is not lost even if the application process crashes between commit and send — the persisted QR on the order also remains retrievable in-app as a backstop
+- **THEN** the e-ticket notification intent is written to `notification_outbox` in the same database transaction that marks the order PAID; a worker retries PENDING or FAILED outbox rows until acknowledged and marked SENT, so the e-ticket is not lost even if the application process crashes between commit and send — the persisted QR in `tickets.qr_token` also remains retrievable in-app as a backstop
 
 #### Scenario: Best-effort notifications use lightweight dispatch
 - **WHEN** a best-effort notification (in-app toast, 24h reminder) is dispatched

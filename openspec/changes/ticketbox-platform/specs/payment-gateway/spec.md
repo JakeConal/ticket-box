@@ -3,6 +3,8 @@
 ### Requirement: Payment is initiated via VNPAY or MoMo
 The system SHALL support initiating a payment session through either VNPAY or MoMo based on the user's selection.
 
+API contract: payment sessions are initiated only through `POST /api/tickets/purchase`, which returns `{orderId, paymentUrl}` after inventory reservation and idempotency-key claim.
+
 #### Scenario: VNPAY payment session created
 - **WHEN** a user selects VNPAY and submits a purchase request
 - **THEN** the system creates a pending order, calls the VNPAY API to create a payment URL, and returns the redirect URL to the client within 2 seconds
@@ -13,6 +15,8 @@ The system SHALL support initiating a payment session through either VNPAY or Mo
 
 ### Requirement: Payment result is confirmed via gateway callback
 The system SHALL process the payment gateway's callback (webhook or redirect) to confirm or reject the payment and update the order accordingly.
+
+API contract: VNPAY sends `GET /api/payments/vnpay/callback`; MoMo sends `POST /api/payments/momo/callback`. These callback endpoints are not JWT-authenticated, but they MUST verify the provider signature before changing order state.
 
 #### Scenario: Successful payment callback
 - **WHEN** the payment gateway sends a successful payment notification
@@ -29,13 +33,13 @@ The system SHALL process the payment gateway's callback (webhook or redirect) to
 ### Requirement: Each purchase attempt is idempotent
 The system SHALL prevent a user from being charged twice for the same purchase attempt, regardless of client retries or network interruptions.
 
-#### Scenario: Duplicate purchase request within TTL
-- **WHEN** a client sends a purchase request with the same Idempotency-Key header within 24 hours
+#### Scenario: Duplicate purchase request within Redis fast-path TTL
+- **WHEN** a client sends a purchase request with the same Idempotency-Key header within the 24-hour Redis fast-path cache TTL
 - **THEN** the system returns the result of the original request (same order ID, same status) without initiating a new payment session
 
-#### Scenario: New purchase after TTL expiry
-- **WHEN** a client sends a purchase request with an Idempotency-Key that expired more than 24 hours ago
-- **THEN** the system treats it as a new request and creates a new payment session
+#### Scenario: Duplicate purchase request after Redis fast-path TTL expiry
+- **WHEN** a client sends a purchase request with an Idempotency-Key whose 24-hour Redis fast-path cache entry has expired
+- **THEN** the system checks the durable PostgreSQL `idempotency_keys` table and, while the DB row exists, returns the stored result without creating a new payment session
 
 #### Scenario: Purchase without idempotency key
 - **WHEN** a client submits a purchase request without the Idempotency-Key header
@@ -69,7 +73,7 @@ The system SHALL distinguish between two distinct timeout scenarios: failure bef
 
 #### Scenario: Payment URL creation times out (user has not yet paid)
 - **WHEN** the backend call to the gateway to create a payment session does not respond within the configured timeout (10 seconds)
-- **THEN** the system marks the order as FAILED, restores inventory (remaining += quantity), and returns HTTP 503 to the client — the client never received a payment URL so the user was never redirected and has definitely not been charged; they must start a new purchase attempt
+- **THEN** the system marks the order as FAILED, restores inventory (`remaining_quantity += quantity`), and returns HTTP 503 to the client — the client never received a payment URL so the user was never redirected and has definitely not been charged; they must start a new purchase attempt
 
 #### Scenario: Webhook delivery times out (user may have already paid)
 - **WHEN** the user was successfully redirected to the gateway, completed payment on the gateway's page, but the gateway's webhook notification does not reach the backend within the expected window
@@ -81,7 +85,7 @@ The system SHALL distinguish between two distinct timeout scenarios: failure bef
 
 #### Scenario: Order reconciled via webhook after delivery timeout — payment failed
 - **WHEN** the payment gateway sends a delayed webhook confirming payment failure for a PENDING_CONFIRMATION order
-- **THEN** the system marks the order as FAILED and restores inventory (remaining += quantity) so the seats become available again
+- **THEN** the system marks the order as FAILED and restores inventory (`remaining_quantity += quantity`) so the seats become available again
 
 #### Scenario: Gateway is actively queried before expiring an unconfirmed order
 - **WHEN** an order has remained in PENDING_CONFIRMATION for more than 15 minutes with no webhook received
@@ -94,9 +98,11 @@ The system SHALL distinguish between two distinct timeout scenarios: failure bef
 ### Requirement: Late payment confirmation for an expired order results in a refund, never a re-granted seat
 If a successful payment is confirmed (by webhook or status query) for an order that has already been EXPIRED, the system SHALL NOT re-grant the inventory — the seats were released and may have been resold — and SHALL route the order to a refund path instead.
 
+API contract: `GET /api/admin/orders?concertId=&status=REFUND_REQUIRED` lists refund-required orders for concerts owned by the ORGANIZER; `POST /api/admin/orders/{id}/mark-refunded` records the manual refund result after ownership verification. No automated gateway refund API is exposed.
+
 #### Scenario: Success webhook arrives for an already-EXPIRED order
 - **WHEN** the gateway delivers a valid, signature-verified success webhook for an order in EXPIRED status
-- **THEN** the system marks the order REFUND_REQUIRED (it does not restore or re-decrement inventory and does not issue e-tickets), notifies the user that their payment will be refunded, and surfaces the order in the organizer/admin dashboard for refund handling
+- **THEN** the system marks the order REFUND_REQUIRED (it does not restore or re-decrement `remaining_quantity` and does not issue e-tickets), notifies the user that their payment will be refunded, and surfaces the order in the organizer/admin dashboard for refund handling
 
 #### Scenario: Refund execution is manual and out-of-band
 - **WHEN** an order is in REFUND_REQUIRED status

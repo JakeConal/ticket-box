@@ -22,6 +22,23 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 - Multi-language i18n beyond Vietnamese/English
 - Automated refund processing — orders that end up charged-but-unfulfilled (late payment confirmation after expiry, cancelled concerts with paid ticket holders) are marked `REFUND_REQUIRED` and surfaced in the admin dashboard; the actual money movement is performed manually via the gateway's merchant portal, and the organizer records the outcome (`REFUNDED`) for audit. No gateway refund-API integration in this project.
 
+## API Contract Baseline
+
+All backend HTTP routes are exposed under `/api/**` through Nginx. Routes without `/api`, such as `/admin/**`, `/concerts/[id]`, and `/orders/[id]`, are frontend routes only.
+
+| Area | Endpoint contract | Access contract |
+| :--- | :--- | :--- |
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh` | Public registration creates AUDIENCE only; refresh uses a refresh token and rotates it |
+| Public concerts | `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` | Public for PUBLISHED concerts; `GET /api/concerts/{id}` returns DRAFT only when the requester is the owning ORGANIZER, otherwise DRAFT/CANCELLED are excluded |
+| Queue + purchase | `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase` | AUDIENCE or ORGANIZER; purchase uses a client-supplied or server-generated `Idempotency-Key` and, while a queue is active, requires a valid admission token |
+| Orders/e-tickets | `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets` | Order owner; ORGANIZER order access is through ownership-scoped admin endpoints |
+| Payment callbacks | `GET /api/payments/vnpay/callback`, `POST /api/payments/momo/callback` | No JWT; provider signature verification is mandatory before state changes |
+| Admin concerts | `POST /api/admin/concerts`, `PUT /api/admin/concerts/{id}`, `DELETE /api/admin/concerts/{id}`, `POST /api/admin/concerts/{id}/publish`, `POST /api/admin/concerts/{id}/ticket-types`, `PUT /api/admin/concerts/{id}/ticket-types/{typeId}`, `GET /api/admin/concerts/{id}/stats`, `GET /api/admin/concerts/{id}/checkin-conflicts` | ORGANIZER plus server-side ownership check |
+| AI artist bio | `POST /api/admin/concerts/{id}/artist-pdf`, `GET /api/admin/concerts/{id}/artist-bio`, `PUT /api/admin/concerts/{id}/artist-bio`, `POST /api/admin/concerts/{id}/artist-bio/publish`, `POST /api/admin/concerts/{id}/artist-bio/reject` | ORGANIZER plus ownership; draft visible only through admin route |
+| Refund/admin orders | `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded` | ORGANIZER plus ownership; money movement remains manual/out-of-band |
+| Checker | `GET /api/checker/key-bundle?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter` | CHECKER only |
+| VIP import | `POST /api/admin/vip-imports` | ORGANIZER; imported rows must resolve to concerts owned by the requester |
+
 ## Decisions
 
 ### D1 — Architecture: Modular Monolith with Domain Separation
@@ -38,7 +55,7 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 
 ### D2 — Database: PostgreSQL as Primary + Redis as Cache/Lock Store
 
-**Decision:** PostgreSQL for all persistent data (concerts, tickets, orders, users, check-ins, guest list). Redis for: cache-aside (concert data), rate limiting counters, idempotency key store, distributed locks.
+**Decision:** PostgreSQL for all persistent data (concerts, tickets, orders, users, check-ins, guest list, idempotency claims, notification outbox, import-file hashes). Redis for: cache-aside (concert data), rate limiting counters, the virtual waiting queue, Pub/Sub, and fast-path idempotency cache.
 
 **Alternatives considered:**
 - *MongoDB*: Flexible schema useful for seat maps, but loses ACID transactions critical for ticket inventory atomicity.
@@ -53,9 +70,9 @@ TicketBox is a greenfield concert ticketing platform built for Vietnamese events
 **Decision:** When a purchase is initiated, decrement inventory with a single conditional atomic UPDATE rather than an explicit lock-read-write sequence:
 
 ```sql
-UPDATE ticket_type
-SET remaining = remaining - :qty
-WHERE id = :id AND remaining >= :qty;
+UPDATE ticket_types
+SET remaining_quantity = remaining_quantity - :qty
+WHERE id = :id AND remaining_quantity >= :qty;
 -- rows affected = 1 → reservation succeeded; 0 → sold out (HTTP 409)
 ```
 
@@ -76,7 +93,8 @@ Order states and their inventory effect:
 - `PENDING` → reserved; released by expiry job if no payment within **8 minutes**.
 - `PENDING_CONFIRMATION` → reserved; reconciled by webhook or released after 15 min (see payment spec).
 - `PAID` → reserved permanently.
-- `FAILED` / `EXPIRED` → released (`remaining += q`).
+- `FAILED` / `EXPIRED` → released (`remaining_quantity += q`).
+- `REFUND_REQUIRED` / `REFUNDED` → no inventory change; these are refund/audit states after a seat was either already released (`EXPIRED` late success) or the whole event was cancelled.
 
 The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING` and `PENDING_CONFIRMATION` orders and releases their inventory. Without this, a few thousand abandoned checkouts would lock all 200 SVIP seats within seconds even though nobody paid.
 
@@ -104,7 +122,7 @@ The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING`
 
 ### D5 — Rate Limiting: Token Bucket in Redis (Lua Script)
 
-**Decision:** Each API endpoint (especially `POST /tickets/purchase`) has a Token Bucket enforced by a Lua script executed atomically in Redis. Buckets are keyed by IP and by authenticated `user_id`. Exceeded requests receive `429 Too Many Requests` with `Retry-After`.
+**Decision:** Each API endpoint (especially `POST /api/tickets/purchase`) has a Token Bucket enforced by a Lua script executed atomically in Redis. Buckets are keyed by IP and by authenticated `user_id`. Exceeded requests receive `429 Too Many Requests` with `Retry-After`.
 
 **Alternatives considered:**
 - *Fixed Window*: Simple but bursty at window boundary — a user can double the allowed rate by timing requests across the window edge.
@@ -155,15 +173,15 @@ The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING`
 
 ### D9 — Offline Check-in: Local SQLite + Sync Queue
 
-**Decision:** React Native checker app stores scanned check-ins in local SQLite. On scan: write to local DB first, then attempt sync to backend. If offline: queue the record. On reconnect: flush queue to `POST /checkins/batch`. Backend applies check-ins with idempotent upsert on `ticket_id`; last-write-wins conflict policy with server timestamp authority.
+**Decision:** React Native checker app stores scanned check-ins in local SQLite. On scan: write to local DB first, then attempt sync to backend. If offline: queue the record. On reconnect: flush queue to `POST /api/checkins/batch`. Backend inserts accepted check-ins into `checkins` with a UNIQUE constraint on `ticket_id`; first accepted scan wins, and later duplicate attempts are recorded in `checkin_conflicts` without overwriting the winner.
 
 **Alternatives considered:**
 - *CRDTs*: Correct but significant implementation complexity for a check-in-only use case.
 - *Reject if offline*: Unacceptable — project requirement explicitly requires offline operation.
 
-**Rationale:** Check-in is append-only (a ticket is either checked-in or not). Last-write-wins is safe because duplicate check-ins are detected by `ticket_id` uniqueness constraint on backend. The one-way nature (ticket can only transition to checked-in, never back) eliminates merge conflicts.
+**Rationale:** Check-in is append-only (a ticket is either checked-in or not). Duplicate check-ins are rejected by the backend `checkins.ticket_id` uniqueness constraint, so the accepted row is never overwritten; conflict attempts are audit records. The one-way nature (ticket can only transition to checked-in, never back) eliminates merge conflicts.
 
-**Implementation note — SQLite as universal scan log:** The local SQLite `checkins` table is not merely an offline buffer; it is the authoritative scan log for this device regardless of connectivity. All scans — online and offline — write to SQLite first before any backend call is made. This ensures that if the device transitions from online to offline mid-session, already-scanned tickets are still rejected locally without requiring a network check. Local records carry one of three statuses: `SYNCED` (backend confirmed), `PENDING_SYNC` (awaiting sync), or `CONFLICT` (backend rejected — already admitted by another device). All three statuses block re-entry on this device.
+**Implementation note — SQLite as universal scan log:** The local SQLite `local_checkins` table is not merely an offline buffer; it is the authoritative scan log for this device regardless of connectivity. All scans — online and offline — write to SQLite first before any backend call is made. This ensures that if the device transitions from online to offline mid-session, already-scanned tickets are still rejected locally without requiring a network check. Local records carry one of three statuses: `SYNCED` (backend confirmed), `PENDING_SYNC` (awaiting sync), or `CONFLICT` (backend rejected — already admitted by another device). All three statuses block re-entry on this device.
 
 **Guarantee boundary — cross-device offline double-entry:** The "a ticket may not be used twice" guarantee is **per-device always, global eventually** — it cannot be absolute while two devices are simultaneously offline. If checker A and checker B are both offline and each scans the same ticket, both admit the holder at the gate; the conflict is only detected when the second device syncs and the backend's `ticket_id` uniqueness rejects it (marking that local record `CONFLICT`). The person is already inside by then. This residual window is inherent to offline-capable multi-device check-in and is accepted; it is mitigated operationally by assigning each ticket-holder to a single gate/zone so two checkers rarely scan the same ticket, and by surfacing `CONFLICT` records in the admin dashboard for post-hoc review.
 
@@ -174,10 +192,10 @@ The background expiry job (a Spring `@Scheduled` task) scans for stale `PENDING`
 **Decision:**
 - Concert list: TTL 5 minutes. Invalidated on any concert create/update/cancel.
 - Concert detail (incl. ticket type info): TTL 60 seconds. Invalidated on concert update.
-- Ticket availability count: TTL 10 seconds + active invalidation after each successful purchase.
+- Ticket availability count: TTL 10 seconds + active invalidation after every committed `remaining_quantity` mutation: reservation/order creation, release on `FAILED` or `EXPIRED`, and admin ticket quantity changes.
 - No caching on purchase/checkout endpoints.
 
-**Rationale:** Concert metadata changes rarely; 5-min stale list is acceptable. Ticket counts must be near-real-time (10s TTL) so buyers see accurate availability. Active invalidation on purchase ensures counts drop promptly rather than waiting out the TTL.
+**Rationale:** Concert metadata changes rarely; 5-min stale list is acceptable. Ticket counts must be near-real-time (10s TTL) so buyers see accurate availability. Because inventory is reserved at order creation, active invalidation follows every `remaining_quantity` mutation rather than waiting for paid confirmation; counts rise promptly on `FAILED`/`EXPIRED` release and change promptly after admin quantity edits. Purchase and checkout correctness never depends on this cache: the write path always uses PostgreSQL's conditional atomic update.
 
 ---
 
@@ -209,7 +227,7 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 **Concurrent regeneration — generation version token.** Re-upload is allowed, so two async tasks can race; a slow earlier task could finish *after* a faster later one and overwrite newer content with older. Each upload stamps the concert with a monotonically increasing `bio_generation_id`; a completing task writes its result only if its id is still the latest, otherwise it discards. (Same ordering guard used for payment-webhook reconciliation and offline-checkin sync.)
 
-**Cache invalidation on publish.** Concert detail is cached with a 60s TTL (D10). A status transition that changes what the public sees — i.e. reaching `PUBLISHED` (or an organizer edit to a published bio) — actively invalidates the concert-detail cache, exactly like availability invalidation after a purchase. Without this the page can show a stale "coming soon" for up to a TTL after the bio is live.
+**Cache invalidation on publish.** Concert detail is cached with a 60s TTL (D10). A status transition that changes what the public sees — i.e. reaching `PUBLISHED` (or an organizer edit to a published bio) — actively invalidates the concert-detail cache, exactly like availability invalidation after an inventory mutation. Without this the page can show a stale "coming soon" for up to a TTL after the bio is live.
 
 **Input hardening.** The upload path treats the PDF as hostile: validate the real content type by magic bytes (not just extension/`Content-Type`); reject encrypted/password-protected PDFs early; bound PDFBox extraction with a timeout and a page/char ceiling to defuse decompression-bomb PDFs (small on disk, huge when expanded); cap extracted text length before the Gemini call (token cost); and rate-limit regenerations per concert/organizer so repeated uploads cannot drain the free-tier quota or rack up cost.
 
@@ -221,11 +239,11 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 **Idempotency anchor — normalized phone, not name:** The upsert key is `(concert_id, phone_normalized)`; `name` is deliberately *excluded*. Name is mutable display data (accent/spelling variants like "Nguyễn Văn A" vs "Nguyen Van A" arrive across nightly files) — keying on it would create duplicate guest rows for the same person. Phone is the stable identity. The phone normalizer (strip spaces/dashes, resolve `0` ↔ `+84` prefix to one canonical form) is therefore load-bearing for idempotency and is unit-tested. Phone is a required column; rows without it are skipped.
 
-**Concert identity via agreed `event_code`, not internal UUID:** The sponsor has no API and no knowledge of TicketBox's internal `concert_id` (a UUID minted in our DB). Identity therefore travels as a **human-readable `event_code`** (e.g. `ATSH-HCM-0815`) that the organizer assigns at concert creation and shares with the sponsor out-of-band — the same channel the CSV travels. The import resolves `event_code → concert_id` against the `concerts` table; an unresolvable code is a **whole-file error** (quarantine + alert), never a guess. This is rejected in favor of two weaker alternatives: embedding the UUID in the CSV (impossible — the sponsor doesn't have it) and encoding identity in the filename/drop-folder (pushes identity into the transport layer where a typo silently misfiles guests onto the wrong concert with no validation surface). With no API, structural validation against `concerts` is the *only* place a wrong-concert file can be caught before it corrupts a live guest list.
+**Concert identity via agreed `event_code`, not internal UUID:** The sponsor has no API and no knowledge of TicketBox's internal `concert_id` (a UUID minted in our DB). Identity therefore travels as a **human-readable `event_code`** (e.g. `ATSH-HCM-0815`) that the organizer assigns at concert creation and shares with the sponsor out-of-band — the same channel the CSV travels. The import resolves `event_code → concert_id` against the `concerts` table; an unresolvable row is skipped with a structured error, and the file is quarantined only when no rows resolve to a known concert. The system never guesses a concert. This is rejected in favor of two weaker alternatives: embedding the UUID in the CSV (impossible — the sponsor doesn't have it) and encoding identity in the filename/drop-folder (pushes identity into the transport layer where a typo silently misfiles guests onto the wrong concert with no validation surface). With no API, structural validation against `concerts` is the *only* place a wrong-concert row can be caught before it corrupts a live guest list.
 
 **File granularity & scoped reconciliation:** `event_code` is a **per-row** column, so one file MAY carry guests for multiple concerts (a sponsor running a festival series). This makes reconciliation scoping critical: the snapshot is authoritative only for the **concerts actually present in the file**, never globally. A file containing only *Anh Trai Say Hi* guests must NOT deactivate *Em Xinh* guests merely because they are absent. Reconciliation groups rows by resolved `concert_id` and deactivates absent guests *only within those concerts*.
 
-**Snapshot semantics with reconcile-on-import:** The file is treated as a **full snapshot** of each represented concert's guest list, not a delta. After upserting present rows, the job deactivates `vip_guests` rows — *scoped to the concerts present in this file* — that are *absent* from the file (soft-delete: `active = false`, not hard delete — preserves audit trail and any `ENTERED` history). This handles guest *revocation*: a guest dropped from a later file is no longer admitted. Without reconciliation, the additive-only upsert could never revoke access.
+**Snapshot semantics with reconcile-on-import:** The file is treated as a **full snapshot** of each represented concert's guest list, not a delta. After upserting present rows, the job deactivates `vip_guests` rows — *scoped to the concerts present in this file* — that are *absent* from the file (soft-delete: `active = false`, not hard delete — preserves audit trail and any `entered` / `entered_at` history). This handles guest *revocation*: a guest dropped from a later file is no longer admitted. Without reconciliation, the additive-only upsert could never revoke access.
 
 **Field-level merge protects system-owned columns:** The UPDATE half of the upsert merges *sponsor-supplied columns only* (name, sponsor, zone, `active`). System-owned columns (`entered`, `entered_at`) are never touched by import — so a re-run mid-event cannot un-admit a guest who already entered.
 
@@ -255,11 +273,11 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
 
 ## Risks / Trade-offs
 
-- **Inventory row contention under extreme load** → the conditional atomic decrement (D3) still serializes writes on a single `ticket_type` row; response time grows with contention. Mitigation: the waiting queue (D16) bounds how many admitted sessions contend at once, rate limiting bounds request rate, and the connection pool (`HikariCP`) cap prevents thread exhaustion. Accept: for 200 SVIP seats among 80k buyers, the bottleneck is intentional — we serialize access, not parallelize it.
+- **Inventory row contention under extreme load** → the conditional atomic decrement (D3) still serializes writes on a single `ticket_types` row; response time grows with contention. Mitigation: the waiting queue (D16) bounds how many admitted sessions contend at once, rate limiting bounds request rate, and the connection pool (`HikariCP`) cap prevents thread exhaustion. Accept: for 200 SVIP seats among 80k buyers, the bottleneck is intentional — we serialize access, not parallelize it.
 
 - **Redis single point of failure (now broader)** → Redis backs cache, rate-limit buckets, the per-user limit fast gate (D4), the idempotency fast path (D6), and the waiting queue (D16). On Redis loss: cache misses fall to DB; rate limiting falls back to allow-all; the **durable Postgres guards still hold** for idempotency (UNIQUE) and per-user limit (in-transaction count), so correctness is preserved even though throughput degrades. The waiting queue is unavailable during a Redis outage — fallback is to close the sale-open gate (fail-safe: reject new entrants) rather than admit an unmetered herd. Mitigation: Redis persistence (AOF) enabled; accept a degraded-performance window during restart rather than blocking all traffic.
 
-- **Reservation-leak / counter drift** → if the expiry job (D3) stalls, abandoned `PENDING` orders hold inventory and inflate the Redis per-user counter. Mitigation: the job is idempotent and frequent; the DB count (D4) and `remaining` column are the self-correcting source of truth, so a delayed job degrades availability of seats temporarily but never corrupts correctness.
+- **Reservation-leak / counter drift** → if the expiry job (D3) stalls, abandoned `PENDING` orders hold inventory and inflate the Redis per-user counter. Mitigation: the job is idempotent and frequent; the DB count (D4) and `remaining_quantity` column are the self-correcting source of truth, so a delayed job degrades availability of seats temporarily but never corrupts correctness.
 
 - **Offline check-in clock skew** → Mobile device time may differ from server time, affecting timestamp ordering. Mitigation: server timestamp is authoritative for `checked_in_at`; device timestamp is stored separately for audit only.
 
@@ -307,7 +325,7 @@ A completed generation lands in `DRAFT`, visible only to the organizer in the ad
                                    ▼
                     ┌─────────────────────────────┐
                     │  Admitted window (token TTL)│  ← token required to
-                    │  → POST /tickets/purchase   │     reach purchase path
+                    │  → POST /api/tickets/purchase │   reach purchase path
                     └──────────────┬──────────────┘
                                    │ token-scoped token bucket (D5)
                                    ▼

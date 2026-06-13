@@ -29,7 +29,7 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - `ai-artist-bio`: Organizer uploads PDF press kit; system extracts and cleans text; calls AI model (Google Gemini API, free tier) to generate short bio; bio displayed on concert detail page
 - `vip-guest-csv`: Scheduled nightly import of CSV files from brand sponsor; idempotent upsert with duplicate detection; error-tolerant parsing; checker staff can verify VIP guests at gate
 - `rate-limiting`: Token Bucket algorithm enforced at API gateway; configurable per-endpoint thresholds; returns 429 with Retry-After; complemented by a FIFO virtual waiting queue for sale-open windows that admits users in arrival order at a rate the purchase path can serve — together they protect the backend from 80k-user spikes while preserving fairness
-- `caching`: Redis cache-aside for concert list (TTL ~5 min) and concert detail (TTL ~1 min); active invalidation of ticket count cache on each successful purchase transaction
+- `caching`: Redis cache-aside for concert list (TTL ~5 min) and concert detail (TTL ~1 min); active invalidation of ticket count cache on each committed `remaining_quantity` mutation
 
 ### Modified Capabilities
 

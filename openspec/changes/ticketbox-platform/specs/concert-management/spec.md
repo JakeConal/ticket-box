@@ -3,6 +3,8 @@
 ### Requirement: Organizer can create a concert
 An authenticated user with the ORGANIZER role SHALL be able to create a new concert with all required metadata.
 
+API contract: `POST /api/admin/concerts` is ORGANIZER-only and creates a DRAFT concert owned by the requester.
+
 #### Scenario: Successful concert creation
 - **WHEN** an ORGANIZER submits a valid concert form (name, date, venue, artist info, SVG seat map, at least one ticket type)
 - **THEN** the system creates the concert with status DRAFT, returns the new concert ID, and makes it visible to Organizers in the admin dashboard
@@ -14,6 +16,8 @@ An authenticated user with the ORGANIZER role SHALL be able to create a new conc
 ### Requirement: Organizer can configure ticket types per concert
 An ORGANIZER SHALL be able to define one or more ticket types for a concert, each with name, price, total quantity, sale open datetime, and per-user purchase limit.
 
+API contract: `POST /api/admin/concerts/{id}/ticket-types` creates a ticket type and `PUT /api/admin/concerts/{id}/ticket-types/{typeId}` updates it. Both endpoints are ORGANIZER-only and ownership-scoped.
+
 #### Scenario: Valid ticket type configuration
 - **WHEN** an ORGANIZER creates ticket types for zones GA, SVIP, VIP, CAT1, CAT2 with distinct prices, quantities, and per-user limits
 - **THEN** the system saves all ticket types linked to the concert and exposes them on the public concert detail page
@@ -24,6 +28,8 @@ An ORGANIZER SHALL be able to define one or more ticket types for a concert, eac
 
 ### Requirement: Organizer can publish a concert to make it publicly visible
 A concert SHALL start in DRAFT status, invisible to the public, and SHALL become publicly visible only when its owning ORGANIZER explicitly publishes it. Publishing requires the concert to have at least one configured ticket type.
+
+API contract: `POST /api/admin/concerts/{id}/publish` is ORGANIZER-only and ownership-scoped.
 
 #### Scenario: Organizer publishes a draft concert
 - **WHEN** an ORGANIZER publishes a DRAFT concert that has complete metadata and at least one ticket type
@@ -44,6 +50,8 @@ A concert SHALL start in DRAFT status, invisible to the public, and SHALL become
 ### Requirement: Organizer can update concert information
 An ORGANIZER SHALL be able to update a concert's metadata (name, description, venue, artist info, seat map) before the concert date.
 
+API contract: `PUT /api/admin/concerts/{id}` is ORGANIZER-only and ownership-scoped.
+
 #### Scenario: Update concert while not yet sold out
 - **WHEN** an ORGANIZER updates the concert description and artist info
 - **THEN** the system saves the changes, invalidates the concert detail cache, and reflects the update on the public page within 60 seconds
@@ -55,9 +63,11 @@ An ORGANIZER SHALL be able to update a concert's metadata (name, description, ve
 ### Requirement: Organizer can cancel a concert
 An ORGANIZER SHALL be able to cancel a concert, which marks it as CANCELLED and stops new ticket sales.
 
+API contract: `DELETE /api/admin/concerts/{id}` is ORGANIZER-only and ownership-scoped.
+
 #### Scenario: Cancel concert with existing ticket holders
 - **WHEN** an ORGANIZER cancels a concert that has paid ticket holders
-- **THEN** the system sets concert status to CANCELLED, halts new purchases, and notifies all ticket holders via the notification system
+- **THEN** the system sets concert status to CANCELLED, halts new purchases, transitions existing PAID orders for that concert to REFUND_REQUIRED without restoring inventory, and notifies all ticket holders via the notification system
 
 #### Scenario: Attempt to cancel already-cancelled concert
 - **WHEN** an ORGANIZER attempts to cancel a concert already in CANCELLED status
@@ -65,6 +75,8 @@ An ORGANIZER SHALL be able to cancel a concert, which marks it as CANCELLED and 
 
 ### Requirement: Public users can browse the concert listing
 Unauthenticated and authenticated users SHALL be able to view a paginated list of upcoming concerts with basic info (name, date, venue, thumbnail, availability status).
+
+API contract: `GET /api/concerts` returns PUBLISHED concerts only.
 
 #### Scenario: Concert listing served from cache
 - **WHEN** any user requests the concert listing page
@@ -76,6 +88,8 @@ Unauthenticated and authenticated users SHALL be able to view a paginated list o
 
 ### Requirement: Public users can view concert detail
 Any user SHALL be able to view a concert detail page including artist info, venue, seat map (interactive SVG by zone), and real-time ticket availability per zone.
+
+API contract: `GET /api/concerts/{id}` returns public PUBLISHED concert detail and returns a DRAFT concert only to the owning ORGANIZER; `GET /api/concerts/{id}/availability` returns display-only availability by ticket type/zone and is never used by purchase correctness logic.
 
 #### Scenario: Ticket availability reflects recent purchases
 - **WHEN** a ticket is purchased for zone SVIP

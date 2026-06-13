@@ -3,6 +3,8 @@
 ### Requirement: Authenticated user can purchase tickets
 An authenticated user (AUDIENCE role; ORGANIZER inherits audience permissions per admin-rbac) SHALL be able to select a ticket type and quantity, proceed to payment, and receive a QR e-ticket upon successful payment.
 
+API contract: `POST /api/tickets/purchase` is available only to AUDIENCE and ORGANIZER roles. It accepts the selected ticket type, quantity, payment provider, an optional client-supplied `Idempotency-Key` (server-generated when missing), and a waiting-queue admission token when the queue is active; on success it returns `{orderId, paymentUrl}`.
+
 #### Scenario: Successful purchase end-to-end
 - **WHEN** an authenticated user selects 2 CAT1 tickets, completes payment via VNPAY, and the gateway confirms payment
 - **THEN** the system decrements ticket inventory by 2, creates an order with status PAID, and issues 2 QR e-tickets to the user
@@ -39,14 +41,14 @@ The system SHALL ensure that concurrent purchases of the same ticket type never 
 
 #### Scenario: Inventory decremented via single atomic conditional update
 - **WHEN** a purchase reserves inventory
-- **THEN** the decrement is performed by a single conditional statement (`UPDATE ticket_type SET remaining = remaining - :qty WHERE id = :id AND remaining >= :qty`); a result of zero rows affected is treated as sold out and no order is created
+- **THEN** the decrement is performed by a single conditional statement (`UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`); a result of zero rows affected is treated as sold out and no order is created
 
 ### Requirement: Reserved inventory is released when an order is not paid
 Inventory is decremented at order creation (reserve-on-create), so the system SHALL reclaim inventory from orders that never reach PAID, ensuring abandoned checkouts do not permanently lock seats.
 
 #### Scenario: Unpaid PENDING order expires and releases inventory
 - **WHEN** an order remains in PENDING status (payment URL issued but no payment completed) for more than the reservation window (8 minutes)
-- **THEN** a background job transitions the order to EXPIRED and restores inventory (remaining += quantity) so the seats become purchasable again
+- **THEN** a background job transitions the order to EXPIRED and restores inventory (`remaining_quantity += quantity`) so the seats become purchasable again
 
 #### Scenario: Released order frees the buyer's per-user quota
 - **WHEN** an order transitions to FAILED or EXPIRED
@@ -54,6 +56,8 @@ Inventory is decremented at order creation (reserve-on-create), so the system SH
 
 ### Requirement: Sale-open access is gated by a fair waiting queue
 During a sale-open window the system SHALL admit users to the purchase path through a FIFO waiting queue rather than rejecting excess load outright, so that access order reflects arrival order.
+
+API contract: `POST /api/queue/{concertId}/enter` enqueues the authenticated user and returns their position; `GET /api/queue/{concertId}/status` returns current position/estimated wait or a signed admission token when admitted.
 
 #### Scenario: User enters the waiting queue at sale open
 - **WHEN** a user arrives at the purchase flow while the queue is active
@@ -70,9 +74,11 @@ During a sale-open window the system SHALL admit users to the purchase path thro
 ### Requirement: User receives QR e-ticket after successful payment
 After a payment is confirmed, the system SHALL generate a unique, cryptographically-signed QR code for each purchased ticket and deliver it to the buyer.
 
+API contract: `GET /api/orders/{id}` lets the order owner poll status after gateway redirect; `GET /api/orders/{id}/tickets` returns QR e-ticket data to the order owner after payment is PAID.
+
 #### Scenario: E-ticket delivered after payment confirmation
 - **WHEN** payment is confirmed by the gateway webhook or redirect callback
-- **THEN** the system generates an asymmetrically-signed (EdDSA/RS256) JWT QR code per ticket using a server-held private key, stores it in the order, and dispatches it to the user via the notification system within 30 seconds
+- **THEN** the system creates one row in `tickets` per purchased unit, stores the asymmetrically-signed (EdDSA/RS256) JWT QR code in `tickets.qr_token`, and dispatches it to the user via the notification system within 30 seconds
 
 #### Scenario: QR code is unique per ticket
 - **WHEN** two users purchase tickets for the same concert

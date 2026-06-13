@@ -31,10 +31,10 @@ The system SHALL cache individual concert detail responses (including ticket typ
 - **THEN** the system immediately invalidates that concert's detail cache key
 
 ### Requirement: Ticket availability count is cached with short TTL and active invalidation
-The system SHALL cache remaining ticket counts per ticket type with a 10-second TTL and actively invalidate after each confirmed purchase.
+The system SHALL cache remaining ticket counts per ticket type with a 10-second TTL and actively invalidate after every committed `remaining_quantity` mutation, including reservation/order creation, release on `FAILED` or `EXPIRED`, and admin ticket quantity changes.
 
-#### Scenario: Ticket count cache active invalidation after purchase
-- **WHEN** a ticket purchase is confirmed and inventory is decremented
+#### Scenario: Ticket count cache active invalidation after inventory mutation
+- **WHEN** a ticket type's `remaining_quantity` changes because seats are reserved at order creation, released on `FAILED` or `EXPIRED`, or adjusted by an admin
 - **THEN** the system deletes the ticket availability cache key for that ticket type, so the next read fetches the updated count from PostgreSQL
 
 #### Scenario: Ticket count cache miss falls through to database
@@ -50,7 +50,7 @@ The system SHALL ensure that caching of ticket availability is used only for dis
 
 #### Scenario: Stale cache shows tickets available but DB has zero
 - **WHEN** a user sees non-zero availability from cache and attempts to purchase
-- **THEN** the purchase flow enforces inventory directly in PostgreSQL via the conditional atomic decrement (`UPDATE ticket_type SET remaining = remaining - :qty WHERE id = :id AND remaining >= :qty`); if zero rows are affected the purchase is rejected with HTTP 409 regardless of what the cache showed
+- **THEN** the purchase flow enforces inventory directly in PostgreSQL via the conditional atomic decrement (`UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`); if zero rows are affected the purchase is rejected with HTTP 409 regardless of what the cache showed
 
 #### Scenario: No caching on purchase or checkout endpoints
 - **WHEN** a user submits a purchase request
