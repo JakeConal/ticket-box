@@ -3,7 +3,7 @@
 ### Requirement: Payment is initiated via VNPAY or MoMo
 The system SHALL support initiating a payment session through either VNPAY or MoMo based on the user's selection.
 
-API contract: payment sessions are initiated only through `POST /api/tickets/purchase`, which returns `{orderId, paymentUrl}` after inventory reservation and idempotency-key claim.
+API contract: successful payment sessions are initiated only through `POST /api/tickets/purchase`, which returns `{orderId, paymentUrl}` after payment-provider availability is accepted, inventory is reserved, and the idempotency key is claimed. If the provider circuit is OPEN, the endpoint returns 503 before inventory reservation or order creation.
 
 #### Scenario: VNPAY payment session created
 - **WHEN** a user selects VNPAY and submits a purchase request
@@ -58,7 +58,7 @@ The system SHALL use a circuit breaker to prevent cascading failures when VNPAY 
 
 #### Scenario: Circuit breaker opens after threshold failures
 - **WHEN** 5 or more payment gateway calls fail within a 10-second window
-- **THEN** the circuit breaker transitions to OPEN state and subsequent purchase attempts receive HTTP 503 "Payment temporarily unavailable" without attempting to call the gateway
+- **THEN** the circuit breaker transitions to OPEN state and subsequent purchase attempts receive HTTP 503 "Payment temporarily unavailable" before inventory is reserved or an order is created
 
 #### Scenario: Circuit breaker probes gateway after cooldown
 - **WHEN** the circuit breaker has been OPEN for 30 seconds
@@ -73,7 +73,7 @@ The system SHALL distinguish between two distinct timeout scenarios: failure bef
 
 #### Scenario: Payment URL creation times out (user has not yet paid)
 - **WHEN** the backend call to the gateway to create a payment session does not respond within the configured timeout (10 seconds)
-- **THEN** the system marks the order as FAILED, restores inventory (`remaining_quantity += quantity`), and returns HTTP 503 to the client — the client never received a payment URL so the user was never redirected and has definitely not been charged; they must start a new purchase attempt
+- **THEN** the system marks the order as FAILED, restores inventory (`remaining_quantity += quantity`), decrements the Redis per-user limit counter for the released order items, and returns HTTP 503 to the client — the client never received a payment URL so the user was never redirected and has definitely not been charged; they must start a new purchase attempt
 
 #### Scenario: Webhook delivery times out (user may have already paid)
 - **WHEN** the user was successfully redirected to the gateway, completed payment on the gateway's page, but the gateway's webhook notification does not reach the backend within the expected window

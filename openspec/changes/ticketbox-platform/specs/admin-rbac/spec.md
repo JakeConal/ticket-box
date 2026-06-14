@@ -7,7 +7,7 @@ Endpoint groups:
 - Public/optional-auth: `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` return PUBLISHED concert data to anonymous and authenticated users. `GET /api/concerts/{id}` may additionally return a DRAFT concert only to the owning ORGANIZER.
 - AUDIENCE and ORGANIZER: `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase`, `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets`.
 - ORGANIZER only with ownership checks: `/api/admin/concerts/**`, `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded`, `POST /api/admin/vip-imports`.
-- CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
+- CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checker/assignment-audit`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
 - Gateway callbacks: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` are unauthenticated but signature-verified and are not user-role endpoints.
 
 #### Scenario: AUDIENCE role permissions

@@ -12,7 +12,7 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - Add AI-generated artist bio from uploaded PDF press kits
 - Add scheduled one-way CSV import for VIP guest lists from brand sponsors
 - Implement Redis-based caching for high-read endpoints (concert listing, concert detail)
-- Implement rate limiting (Token Bucket) at the API gateway layer
+- Implement rate limiting (Token Bucket) in the backend API filter layer
 - Add a FIFO virtual waiting queue (Redis-backed) that meters access to the purchase path during sale-open spikes — fairness by arrival order instead of 429 retry lotteries
 - Add an extensible notification system (email + in-app, pluggable for Zalo OA / SMS)
 
@@ -25,10 +25,10 @@ Vietnam's major concert events (Anh Trai Say Hi, Chị Đẹp Đạp Gió Rẽ S
 - `payment-gateway`: Integrate VNPAY and MoMo; idempotency key generation and dedup; circuit breaker (Closed/Open/Half-Open) with graceful degradation when gateway is down
 - `offline-checkin`: Mobile app scans QR codes at assigned event gates/zones; records check-ins locally when offline; syncs to backend when connectivity resumes; prevents same-device duplicate entry, rejects wrong-gate tickets offline, and records cross-device conflicts for audit
 - `notification`: Send purchase confirmation + e-ticket via email and in-app realtime notification (SSE/WebSocket); send 24h pre-event reminder; pluggable channel architecture for future Zalo OA / SMS / native push
-- `admin-rbac`: Three roles — Audience (browse + buy), Organizer (full concert CRUD + revenue stats), Checker (QR scan only); JWT-based auth; middleware enforcement on every API endpoint and admin page
+- `admin-rbac`: Three roles — Audience (browse + buy), Organizer (full concert CRUD + revenue stats), Checker (gate operations: QR scan, VIP guest admission, assignment-audit sync, plus public concert reads); JWT-based auth; middleware enforcement on every API endpoint and admin page
 - `ai-artist-bio`: Organizer uploads PDF press kit; system extracts and cleans text; calls AI model (Google Gemini API, free tier) to generate short bio; bio displayed on concert detail page
 - `vip-guest-csv`: Scheduled nightly import of CSV files from brand sponsor; idempotent upsert with duplicate detection; error-tolerant parsing; checker staff can verify VIP guests at gate
-- `rate-limiting`: Token Bucket algorithm enforced at API gateway; configurable per-endpoint thresholds; returns 429 with Retry-After; complemented by a FIFO virtual waiting queue for sale-open windows that admits users in arrival order at a rate the purchase path can serve — together they protect the backend from 80k-user spikes while preserving fairness
+- `rate-limiting`: Token Bucket algorithm enforced in the backend API filter layer; configurable per-endpoint thresholds; returns 429 with Retry-After; complemented by a FIFO virtual waiting queue for sale-open windows that admits users in arrival order at a rate the purchase path can serve — together they protect the backend from 80k-user spikes while preserving fairness
 - `caching`: Redis cache-aside for concert list (TTL ~5 min) and concert detail (TTL ~1 min); active invalidation of ticket count cache on each committed `remaining_quantity` mutation
 
 ### Modified Capabilities

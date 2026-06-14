@@ -23,7 +23,7 @@ API contract: `POST /api/admin/concerts/{id}/artist-pdf` is ORGANIZER-only and o
 
 #### Scenario: Decompression-bomb PDF does not exhaust resources
 - **WHEN** an uploaded PDF is small on disk but expands enormously during text extraction
-- **THEN** extraction is bounded by a timeout and a page/character ceiling; if exceeded, the system aborts extraction and sets bio status to FAILED with a clear reason rather than exhausting CPU/memory
+- **THEN** extraction is bounded by a timeout and a page/character ceiling; if exceeded, the system aborts extraction, sets `bio_status = FAILED`, stores the clear reason in `bio_error`, and avoids exhausting CPU/memory
 
 ### Requirement: System extracts text and generates bio asynchronously
 After a PDF upload, the system SHALL process the file in the background: extract text, call the AI model, and store the generated bio.
