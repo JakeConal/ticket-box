@@ -1,10 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: System enforces three distinct roles
-The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — each with a clearly defined set of permitted actions. ORGANIZER is a superset of AUDIENCE (an organizer may also browse and purchase); CHECKER is disjoint from both (gate operations only).
+The system SHALL define three roles — AUDIENCE, ORGANIZER, and CHECKER — each with a clearly defined set of permitted protected actions. ORGANIZER is a superset of AUDIENCE (an organizer may also purchase); CHECKER has only gate-operation privileges beyond public read endpoints.
 
 Endpoint groups:
-- AUDIENCE and ORGANIZER: `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability`, `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase`, `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets`.
+- Public/optional-auth: `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` return PUBLISHED concert data to anonymous and authenticated users. `GET /api/concerts/{id}` may additionally return a DRAFT concert only to the owning ORGANIZER.
+- AUDIENCE and ORGANIZER: `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase`, `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets`.
 - ORGANIZER only with ownership checks: `/api/admin/concerts/**`, `GET /api/admin/orders?concertId=&status=`, `POST /api/admin/orders/{id}/mark-refunded`, `POST /api/admin/vip-imports`.
 - CHECKER only: `GET /api/checker/key-bundle?concertId=X`, `GET /api/checker/assignments?concertId=X`, `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests?concertId=&q=`, `POST /api/vip-guests/{id}/enter`.
 - Gateway callbacks: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` are unauthenticated but signature-verified and are not user-role endpoints.
@@ -19,7 +20,7 @@ Endpoint groups:
 
 #### Scenario: CHECKER role permissions
 - **WHEN** a user with CHECKER role is authenticated
-- **THEN** the system allows: access QR scanner for assigned gates/zones, verify VIP guests at gate; and denies: all other actions (browsing, purchasing, admin)
+- **THEN** the system allows: access QR scanner for assigned gates/zones, verify VIP guests at gate, and view public PUBLISHED concert pages like any anonymous visitor; and denies: purchasing, order access, and admin actions
 
 ### Requirement: Role is encoded in JWT and verified on every request
 The system SHALL include the user's role in the JWT access token and validate it on every protected API endpoint via middleware.

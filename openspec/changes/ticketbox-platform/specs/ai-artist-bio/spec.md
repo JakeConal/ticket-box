@@ -30,19 +30,19 @@ After a PDF upload, the system SHALL process the file in the background: extract
 
 #### Scenario: Successful text extraction and AI generation produces a draft
 - **WHEN** the background processor extracts non-empty text from the PDF and the Google Gemini API returns a generated bio
-- **THEN** the system stores the generated text as a DRAFT (status DRAFT, not yet public), visible to the ORGANIZER in the admin dashboard for review — it does NOT appear on the public concert detail page until published
+- **THEN** the system stores the generated text in `artist_bio_draft` as a DRAFT (status DRAFT, not yet public), visible to the ORGANIZER in the admin dashboard for review — it does NOT appear on the public concert detail page until published
 
 #### Scenario: Image-only PDF with no extractable text
 - **WHEN** the background processor extracts zero or fewer than 50 characters from the PDF
-- **THEN** the system sets bio status to FAILED, stores an error reason "Text extraction failed — please upload a text-based PDF", and surfaces the error in the admin dashboard
+- **THEN** the system sets `bio_status = FAILED`, stores `bio_error = "Text extraction failed — please upload a text-based PDF"`, and surfaces the error in the admin dashboard
 
 #### Scenario: Gemini API call fails
 - **WHEN** the Google Gemini API returns an error or times out during bio generation
-- **THEN** the system retries up to 2 times with exponential backoff; if all retries fail, bio status is set to FAILED with reason "AI generation failed — please try again"
+- **THEN** the system retries up to 2 times with exponential backoff; if all retries fail, it sets `bio_status = FAILED` and `bio_error = "AI generation failed — please try again"`
 
 #### Scenario: Gemini free-tier quota exceeded
 - **WHEN** the Google Gemini API returns a quota/rate-limit error (HTTP 429) because the free-tier limit is reached
-- **THEN** the system retries with backoff and, if still throttled, sets bio status to FAILED with reason "AI service busy — please try again later" without losing the uploaded PDF, so the organizer can re-trigger generation
+- **THEN** the system retries with backoff and, if still throttled, sets `bio_status = FAILED` and `bio_error = "AI service busy — please try again later"` without losing the uploaded PDF URI, so the organizer can re-trigger generation
 
 #### Scenario: Generation interrupted by a server restart is not stranded
 - **WHEN** a bio has been in GENERATING status longer than the configured threshold (e.g. 5 minutes) — for example because the application restarted mid-generation
@@ -59,20 +59,20 @@ API contract: `GET /api/admin/concerts/{id}/artist-bio` returns draft/status/err
 
 #### Scenario: Organizer publishes a reviewed draft
 - **WHEN** an ORGANIZER reviews a DRAFT bio (optionally editing the text) and approves it
-- **THEN** the system sets status to PUBLISHED and the bio becomes visible on the public concert detail page
+- **THEN** the system copies `artist_bio_draft` into the public `artist_bio` field, clears the draft/error fields, sets `bio_status = PUBLISHED`, and the bio becomes visible on the public concert detail page
 
 #### Scenario: Organizer rejects a draft
 - **WHEN** an ORGANIZER rejects a DRAFT bio
-- **THEN** the bio is not shown publicly and the organizer may re-upload a different PDF or discard it
+- **THEN** the system clears `artist_bio_draft`, sets `bio_status = REJECTED`, stores any organizer-provided reason in `bio_error`, and the organizer may re-upload a different PDF or discard it; any previously published `artist_bio` remains public
 
 #### Scenario: Public page hides non-published bios
-- **WHEN** a user views a concert detail page while the bio status is GENERATING, DRAFT, FAILED, or absent
-- **THEN** the page renders normally showing an "Artist bio coming soon..." placeholder — only a PUBLISHED bio is ever shown publicly
+- **WHEN** a user views a concert detail page before any bio has been published and the current bio status is GENERATING, DRAFT, FAILED, REJECTED, or absent
+- **THEN** the page renders normally showing an "Artist bio coming soon..." placeholder — drafts, errors, and rejected text are never shown publicly
 
 ### Requirement: Published bio is displayed on the concert detail page
 Once a bio is PUBLISHED, the system SHALL display it on the public concert detail page and keep the cached page consistent.
 
-API contract: `GET /api/concerts/{id}` includes the bio text only when `bio_status = PUBLISHED`; otherwise it returns status/placeholder data suitable for the public page without exposing the draft.
+API contract: `GET /api/concerts/{id}` includes only the public `artist_bio` text. If no `artist_bio` has been published yet, it returns status/placeholder data suitable for the public page without exposing `artist_bio_draft` or `bio_error`. A previously published `artist_bio` remains visible while a newer draft is GENERATING or awaiting review.
 
 #### Scenario: Bio displayed after publishing
 - **WHEN** bio status transitions to PUBLISHED (or an organizer edits an already-published bio)

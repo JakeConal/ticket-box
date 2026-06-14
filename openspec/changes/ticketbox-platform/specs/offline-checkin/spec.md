@@ -3,7 +3,7 @@
 ### Requirement: Checker staff can scan and validate QR e-tickets at the gate
 An authenticated user with the CHECKER role SHALL be able to scan a QR code using the mobile app and receive an immediate pass/fail result.
 
-API contract: `GET /api/checker/key-bundle?concertId=X` returns public verification keys to CHECKER users; `GET /api/checker/assignments?concertId=X` returns the checker's active gate/lane assignment and allowed zones for the concert; `POST /api/checkins/{ticketId}` records a single online check-in attempt and is CHECKER-only.
+API contract: `GET /api/checker/key-bundle?concertId=X` returns public verification keys to CHECKER users; `GET /api/checker/assignments?concertId=X` returns the checker's active gate/lane assignment and allowed zones for the concert; `POST /api/checkins/{ticketId}` records a single online check-in attempt, including `device_id`, `gate_id`, optional `lane_id`, `zone`, and device scan timestamp, and is CHECKER-only.
 
 #### Scenario: Valid QR code scanned while online
 - **WHEN** a CHECKER scans a valid, unused QR e-ticket while connected to the network
@@ -51,7 +51,7 @@ The checker mobile app SHALL record check-ins locally and provide pass/fail deci
 ### Requirement: Offline check-in sync is idempotent and conflict-aware
 The backend SHALL process batched offline check-ins without creating duplicate records or allowing a ticket to be marked as checked-in more than once.
 
-API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-record result (`ok` or `conflict`). `GET /api/admin/concerts/{id}/checkin-conflicts` is ORGANIZER-only and ownership-scoped for post-event audit.
+API contract: `POST /api/checkins/batch` is CHECKER-only and accepts `device_id`, `gate_id`, optional `lane_id`, `zone`, and device scan timestamp per record, returning a per-record result (`ok` or `conflict`). `GET /api/admin/concerts/{id}/checkin-conflicts` is ORGANIZER-only and ownership-scoped for post-event audit.
 
 #### Scenario: Batch sync with no conflicts
 - **WHEN** the checker app sends a batch of 50 offline check-ins to the backend
@@ -59,7 +59,7 @@ API contract: `POST /api/checkins/batch` is CHECKER-only and returns a per-recor
 
 #### Scenario: Batch sync with duplicate ticket
 - **WHEN** the checker app sends a batch containing a ticket ID already marked as checked-in by another device
-- **THEN** the backend rejects the duplicate entry via the `checkins.ticket_id` UNIQUE constraint, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, gate ID, zone, attempted device scan timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
+- **THEN** the backend rejects the duplicate entry via the `checkins.ticket_id` UNIQUE constraint, records the conflict attempt in the `checkin_conflicts` table (capturing ticket ID, attempting checker user ID, device ID, gate ID, optional lane ID, zone, attempted device scan timestamp, and the winning check-in timestamp), returns the existing check-in timestamp to the app, and the app marks that local record as CONFLICT without overwriting the server state
 
 #### Scenario: Conflict audit trail is preserved for post-event review
 - **WHEN** a conflict is recorded during batch sync
