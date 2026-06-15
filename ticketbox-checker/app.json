@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "TicketBox Checker",
+    "slug": "ticketbox-checker",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "ticketboxchecker",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "vn.ticketbox.checker"
+    },
+    "android": {
+      "package": "vn.ticketbox.checker"
+    }
+  }
+}

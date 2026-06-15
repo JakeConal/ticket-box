@@ -1,13 +1,13 @@
 ## 1. Project Setup & Infrastructure
 
-- [ ] 1.1 Initialize Spring Boot 4 project with Gradle Groovy DSL (Java 25, Spring Web, Spring Security, Spring Data JPA, Spring Mail, Spring Scheduling)
-- [ ] 1.2 Create `docker-compose.yml` with services: `api`, `postgres`, `redis`, `nginx`
-- [ ] 1.3 Configure `application.yml` with profiles: `dev`, `test`; wire PostgreSQL and Redis connection properties
-- [ ] 1.4 Add core Gradle dependencies: Resilience4j, jjwt, Apache PDFBox, OpenCSV, Google Gen AI Java SDK (or HTTP client for the Gemini REST API)
-- [ ] 1.5 Initialize React/Next.js frontend project (`ticketbox-web`) with TypeScript and Tailwind CSS
-- [ ] 1.6 Initialize React Native project (`ticketbox-checker`) for the mobile check-in app
-- [ ] 1.7 Set up Nginx reverse proxy config: route `/api/**` → Spring Boot, `/` → Next.js
-- [ ] 1.8 Add `.env.example` documenting all required environment variables (DB URL, Redis URL, auth/queue JWT secret, QR private/public key material or file paths, VNPAY/MoMo keys, Gemini API key, SMTP config)
+- [x] 1.1 Initialize Spring Boot 4 project with Gradle Groovy DSL (Java 25, Spring Web, Spring Security, Spring Data JPA, Spring Mail, Spring Scheduling)
+- [x] 1.2 Create `docker-compose.yml` with services: `api`, `postgres`, `redis`, `nginx`
+- [x] 1.3 Configure `application.yml` with profiles: `dev`, `test`; wire PostgreSQL and Redis connection properties
+- [x] 1.4 Add core Gradle dependencies: Resilience4j, jjwt, Apache PDFBox, OpenCSV, Google Gen AI Java SDK (or HTTP client for the Gemini REST API)
+- [x] 1.5 Initialize React/Next.js frontend project (`ticketbox-web`) with TypeScript and Tailwind CSS
+- [x] 1.6 Initialize React Native project (`ticketbox-checker`) for the mobile check-in app
+- [x] 1.7 Set up Nginx reverse proxy config: route `/api/**` → Spring Boot, `/` → Next.js
+- [x] 1.8 Add `.env.example` documenting all required environment variables (DB URL, Redis URL, auth/queue JWT secret, QR private/public key material or file paths, VNPAY/MoMo keys, Gemini API key, SMTP config)
 
 ## 2. Database Schema & Migrations
 

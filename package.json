@@ -1,0 +1,12 @@
+{
+  "name": "ticket-box",
+  "private": true,
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "web:dev": "pnpm --filter ticketbox-web dev",
+    "web:build": "pnpm --filter ticketbox-web build",
+    "web:start": "pnpm --filter ticketbox-web start",
+    "checker:start": "pnpm --filter ticketbox-checker start",
+    "checker:typecheck": "pnpm --filter ticketbox-checker typecheck"
+  }
+}

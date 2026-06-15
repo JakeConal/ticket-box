@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.0'
+}
+
+group = 'com.ticketbox'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-mail:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-security:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-validation:4.1.0'
+    implementation 'org.springframework.boot:spring-boot-starter-web:4.1.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.5'
+    implementation 'com.opencsv:opencsv:5.9'
+    implementation 'com.google.genai:google-genai:1.43.0'
+
+    runtimeOnly 'org.postgresql:postgresql:42.7.8'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor:4.1.0'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test:4.1.0'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

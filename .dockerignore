@@ -1,0 +1,15 @@
+.git
+.agent
+.claude
+.codex
+blueprint
+openspec
+TicketBoxProject.md
+
+**/node_modules
+**/.next
+**/dist
+**/build
+**/.gradle
+**/npm-debug.log
+**/pnpm-debug.log
