@@ -56,15 +56,15 @@
 
 ## 5. Ticket Purchase & Inventory
 
-- [ ] 5.1 Implement `POST /api/tickets/purchase` — authenticated users (AUDIENCE; ORGANIZER inherits AUDIENCE permissions); validate sale window, use client-supplied `Idempotency-Key` or generate one server-side when missing, require a valid waiting-queue admission token while a sale-open queue is active (see section 17)
-- [ ] 5.2 Implement conditional atomic inventory decrement (D3): single statement `UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`; 0 rows affected → HTTP 409 sold out, no order created (no `SELECT FOR UPDATE` lock-read-write sequence); after the committed decrement, invalidate `tickets:available:{ticketTypeId}`
-- [ ] 5.3 Implement per-user limit gate: Redis `INCRBY` on `limit:{userId}:{concertId}:{ticketTypeId}`; reject if exceeds limit before DB transaction
-- [ ] 5.4 Implement DB-level guard (D4): inside the purchase transaction, count the user's `order_items` across orders with status IN (PENDING, PENDING_CONFIRMATION, PAID) for that ticket type; reject if count + new quantity exceeds limit (use a per-user advisory lock or serializable isolation on the count)
-- [ ] 5.5 On successful inventory decrement: create order (status PENDING), create order items, return `{orderId, paymentUrl}`
-- [ ] 5.6 Implement order expiry job (D3 lifecycle): scheduled job transitions PENDING orders older than 8 minutes and PENDING_CONFIRMATION orders older than 15 minutes to EXPIRED, restores inventory (`remaining_quantity += qty`), invalidates `tickets:available:{ticketTypeId}` after each committed restore, and decrements the Redis per-user limit counter for each released order item; use `SELECT ... FOR UPDATE SKIP LOCKED` to claim stale orders without contending with live purchases
-- [ ] 5.7 Decrement the Redis per-user limit counter on every order release path (FAILED via gateway callback, EXPIRED via expiry job); after any committed `remaining_quantity += qty` release, invalidate `tickets:available:{ticketTypeId}`; never decrement on PAID — keeps the fast gate consistent with the DB source of truth
-- [ ] 5.8 Write concurrency integration test: 200 threads simultaneously purchasing the last SVIP ticket — assert exactly 1 succeeds
-- [ ] 5.9 Write per-user limit concurrency test: same user sends 5 concurrent requests for 1 ticket each (limit = 2) — assert at most 2 succeed
+- [x] 5.1 Implement `POST /api/tickets/purchase` — authenticated users (AUDIENCE; ORGANIZER inherits AUDIENCE permissions); validate sale window, use client-supplied `Idempotency-Key` or generate one server-side when missing, require a valid waiting-queue admission token while a sale-open queue is active (see section 17)
+- [x] 5.2 Implement conditional atomic inventory decrement (D3): single statement `UPDATE ticket_types SET remaining_quantity = remaining_quantity - :qty WHERE id = :id AND remaining_quantity >= :qty`; 0 rows affected → HTTP 409 sold out, no order created (no `SELECT FOR UPDATE` lock-read-write sequence); after the committed decrement, invalidate `tickets:available:{ticketTypeId}`
+- [x] 5.3 Implement per-user limit gate: Redis `INCRBY` on `limit:{userId}:{concertId}:{ticketTypeId}`; reject if exceeds limit before DB transaction
+- [x] 5.4 Implement DB-level guard (D4): inside the purchase transaction, count the user's `order_items` across orders with status IN (PENDING, PENDING_CONFIRMATION, PAID) for that ticket type; reject if count + new quantity exceeds limit (use a per-user advisory lock or serializable isolation on the count)
+- [x] 5.5 On successful inventory decrement: create order (status PENDING), create order items, return `{orderId, paymentUrl}`
+- [x] 5.6 Implement order expiry job (D3 lifecycle): scheduled job transitions PENDING orders older than 8 minutes and PENDING_CONFIRMATION orders older than 15 minutes to EXPIRED, restores inventory (`remaining_quantity += qty`), invalidates `tickets:available:{ticketTypeId}` after each committed restore, and decrements the Redis per-user limit counter for each released order item; use `SELECT ... FOR UPDATE SKIP LOCKED` to claim stale orders without contending with live purchases
+- [x] 5.7 Decrement the Redis per-user limit counter on every order release path (FAILED via gateway callback, EXPIRED via expiry job); after any committed `remaining_quantity += qty` release, invalidate `tickets:available:{ticketTypeId}`; never decrement on PAID — keeps the fast gate consistent with the DB source of truth
+- [x] 5.8 Write concurrency integration test: 200 threads simultaneously purchasing the last SVIP ticket — assert exactly 1 succeeds
+- [x] 5.9 Write per-user limit concurrency test: same user sends 5 concurrent requests for 1 ticket each (limit = 2) — assert at most 2 succeed
 
 ## 6. Payment Gateway Integration
 
