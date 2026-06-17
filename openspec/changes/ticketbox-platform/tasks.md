@@ -30,15 +30,15 @@
 
 ## 3. Authentication & RBAC
 
-- [ ] 3.1 Implement `POST /api/auth/register` — create user with role AUDIENCE, hash password with BCrypt
-- [ ] 3.2 Implement `POST /api/auth/login` — validate credentials, issue JWT access token (15-min TTL) + refresh token (7-day TTL)
-- [ ] 3.3 Implement `POST /api/auth/refresh` — validate refresh token, rotate: issue new access + refresh token, invalidate old refresh token
-- [ ] 3.4 Implement refresh token reuse detection: if a revoked token is presented, revoke all tokens for that user
-- [ ] 3.5 Configure Spring Security 7 filter chain (lambda DSL): JWT validation filter, role-based `@PreAuthorize` on controllers
-- [ ] 3.6 Implement `AuthJwtUtil` service for access/refresh/admission tokens: generate signed JWTs (HMAC-SHA256), parse and validate, extract claims (userId, role); keep this separate from the asymmetric `QrTokenService` used for e-ticket QR codes
-- [ ] 3.7 Add seed script / SQL insert for initial ORGANIZER and CHECKER accounts (used for testing)
-- [ ] 3.8 Implement ownership enforcement for ORGANIZER actions: beyond the role check, verify server-side that the organizer owns the target concert (edit/cancel concert, ticket types, PDF upload, bio review/publish/reject, revenue/orders); return 403 on cross-organizer access
-- [ ] 3.9 Write integration tests: register → login → access protected endpoint → refresh → revoke; plus an ORGANIZER receiving 403 when acting on another organizer's concert
+- [x] 3.1 Implement `POST /api/auth/register` — create user with role AUDIENCE, hash password with BCrypt
+- [x] 3.2 Implement `POST /api/auth/login` — validate credentials, issue JWT access token (15-min TTL) + refresh token (7-day TTL)
+- [x] 3.3 Implement `POST /api/auth/refresh` — validate refresh token, rotate: issue new access + refresh token, invalidate old refresh token
+- [x] 3.4 Implement refresh token reuse detection: if a revoked token is presented, revoke all tokens for that user
+- [x] 3.5 Configure Spring Security 7 filter chain (lambda DSL): JWT validation filter, role-based `@PreAuthorize` on controllers
+- [x] 3.6 Implement `AuthJwtUtil` service for access/refresh/admission tokens: generate signed JWTs (HMAC-SHA256), parse and validate, extract claims (userId, role); keep this separate from the asymmetric `QrTokenService` used for e-ticket QR codes
+- [x] 3.7 Add seed script / SQL insert for initial ORGANIZER and CHECKER accounts (used for testing)
+- [x] 3.8 Implement ownership enforcement for ORGANIZER actions: beyond the role check, verify server-side that the organizer owns the target concert (edit/cancel concert, ticket types, PDF upload, bio review/publish/reject, revenue/orders); return 403 on cross-organizer access
+- [x] 3.9 Write integration tests: register → login → access protected endpoint → refresh → revoke; plus an ORGANIZER receiving 403 when acting on another organizer's concert
 
 ## 4. Concert Management
 

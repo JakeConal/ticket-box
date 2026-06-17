@@ -4,6 +4,7 @@ import java.util.Arrays;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.BeansException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 public class FlywayConfig {
 
     @Bean(initMethod = "migrate")
+    @ConditionalOnProperty(prefix = "spring.flyway", name = "enabled", havingValue = "true", matchIfMissing = true)
     Flyway flyway(DataSource dataSource) {
         return Flyway.configure()
             .dataSource(dataSource)
@@ -22,6 +24,7 @@ public class FlywayConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "spring.flyway", name = "enabled", havingValue = "true", matchIfMissing = true)
     static BeanFactoryPostProcessor entityManagerFactoryDependsOnFlyway() {
         return new BeanFactoryPostProcessor() {
             @Override
