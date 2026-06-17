@@ -68,18 +68,18 @@
 
 ## 6. Payment Gateway Integration
 
-- [ ] 6.1 Implement `PaymentGatewayService` interface with `createPaymentUrl(order)` and `verifyCallback(params)` methods
-- [ ] 6.2 Implement `VNPayGatewayService`: build signed payment URL, verify HMAC-SHA512 callback signature
-- [ ] 6.3 Implement `MoMoGatewayService`: build signed payment URL, verify RSA/HMAC callback signature
-- [ ] 6.4 Wrap all gateway calls with Resilience4j `@CircuitBreaker`: 5 failures / 10s → OPEN; 30s cooldown → HALF-OPEN probe; when OPEN, reject purchase before claiming inventory or creating an order
-- [ ] 6.5 Implement gateway callback endpoints: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` — unauthenticated but signature-verified; update order status and trigger post-payment flow only after signature validation
-- [ ] 6.6 Implement two-layer idempotency key store (D6): durable PostgreSQL `idempotency_keys` table is the source of truth — claim the key inside the purchase transaction with `INSERT ... ON CONFLICT DO NOTHING` (first-writer-wins); Redis (24h TTL) is the fast-path cache only; on duplicate, return the stored result without creating a new payment session
-- [ ] 6.7 Implement PENDING_CONFIRMATION flow: on webhook delivery timeout after the user was redirected, set order status to PENDING_CONFIRMATION (inventory stays reserved); reconcile when the delayed webhook arrives
-- [ ] 6.8 Implement active gateway reconciliation: before the expiry job transitions a PENDING_CONFIRMATION order to EXPIRED, query the gateway's transaction-status API (VNPAY `querydr` / MoMo transaction query); if the gateway reports success, mark PAID instead of expiring
-- [ ] 6.9 Handle success webhook (or query result) arriving for an already-EXPIRED order: the seat was released and may be resold, so do NOT re-grant inventory — mark the order REFUND_REQUIRED, alert the organizer/support via the admin dashboard, and notify the user that a refund is owed (refund execution itself is manual/out-of-band, per design Non-Goals)
-- [ ] 6.10 Implement `GET /api/orders/{id}` — polling endpoint so frontend can check order status after redirect
-- [ ] 6.11 Implement refund administration endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/orders?concertId=&status=REFUND_REQUIRED` lists orders awaiting manual refund for owned concerts only; `POST /api/admin/orders/{id}/mark-refunded` transitions REFUND_REQUIRED → REFUNDED for audit after ownership verification (money movement happens manually in the gateway merchant portal, per design Non-Goals)
-- [ ] 6.12 Write tests: circuit breaker state transitions, OPEN circuit rejects before inventory/order creation, idempotency dedup with Redis down (durable UNIQUE constraint still admits exactly one), timeout-then-webhook reconciliation, gateway-query-before-expiry, success-webhook-after-EXPIRED marks REFUND_REQUIRED without restoring inventory, mark-refunded transition
+- [x] 6.1 Implement `PaymentGatewayService` interface with `createPaymentUrl(order)` and `verifyCallback(params)` methods
+- [x] 6.2 Implement `VNPayGatewayService`: build signed payment URL, verify HMAC-SHA512 callback signature
+- [x] 6.3 Implement `MoMoGatewayService`: build signed payment URL, verify RSA/HMAC callback signature
+- [x] 6.4 Wrap all gateway calls with Resilience4j `@CircuitBreaker`: 5 failures / 10s → OPEN; 30s cooldown → HALF-OPEN probe; when OPEN, reject purchase before claiming inventory or creating an order
+- [x] 6.5 Implement gateway callback endpoints: `GET /api/payments/vnpay/callback` and `POST /api/payments/momo/callback` — unauthenticated but signature-verified; update order status and trigger post-payment flow only after signature validation
+- [x] 6.6 Implement two-layer idempotency key store (D6): durable PostgreSQL `idempotency_keys` table is the source of truth — claim the key inside the purchase transaction with `INSERT ... ON CONFLICT DO NOTHING` (first-writer-wins); Redis (24h TTL) is the fast-path cache only; on duplicate, return the stored result without creating a new payment session
+- [x] 6.7 Implement PENDING_CONFIRMATION flow: on webhook delivery timeout after the user was redirected, set order status to PENDING_CONFIRMATION (inventory stays reserved); reconcile when the delayed webhook arrives
+- [x] 6.8 Implement active gateway reconciliation: before the expiry job transitions a PENDING_CONFIRMATION order to EXPIRED, query the gateway's transaction-status API (VNPAY `querydr` / MoMo transaction query); if the gateway reports success, mark PAID instead of expiring
+- [x] 6.9 Handle success webhook (or query result) arriving for an already-EXPIRED order: the seat was released and may be resold, so do NOT re-grant inventory — mark the order REFUND_REQUIRED, alert the organizer/support via the admin dashboard, and notify the user that a refund is owed (refund execution itself is manual/out-of-band, per design Non-Goals)
+- [x] 6.10 Implement `GET /api/orders/{id}` — polling endpoint so frontend can check order status after redirect
+- [x] 6.11 Implement refund administration endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/orders?concertId=&status=REFUND_REQUIRED` lists orders awaiting manual refund for owned concerts only; `POST /api/admin/orders/{id}/mark-refunded` transitions REFUND_REQUIRED → REFUNDED for audit after ownership verification (money movement happens manually in the gateway merchant portal, per design Non-Goals)
+- [x] 6.12 Write tests: circuit breaker state transitions, OPEN circuit rejects before inventory/order creation, idempotency dedup with Redis down (durable UNIQUE constraint still admits exactly one), timeout-then-webhook reconciliation, gateway-query-before-expiry, success-webhook-after-EXPIRED marks REFUND_REQUIRED without restoring inventory, mark-refunded transition
 
 ## 7. QR E-Ticket Generation
 

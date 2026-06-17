@@ -1,5 +1,6 @@
 package com.ticketbox.ticket.service;
 
+import com.ticketbox.payment.service.PaymentOrderService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -20,10 +21,15 @@ public class OrderExpiryService {
 
     private final JdbcTemplate jdbcTemplate;
     private final OrderReleaseService orderReleaseService;
+    private final PaymentOrderService paymentOrderService;
 
-    public OrderExpiryService(JdbcTemplate jdbcTemplate, OrderReleaseService orderReleaseService) {
+    public OrderExpiryService(
+            JdbcTemplate jdbcTemplate,
+            OrderReleaseService orderReleaseService,
+            PaymentOrderService paymentOrderService) {
         this.jdbcTemplate = jdbcTemplate;
         this.orderReleaseService = orderReleaseService;
+        this.paymentOrderService = paymentOrderService;
     }
 
     @Scheduled(
@@ -36,8 +42,8 @@ public class OrderExpiryService {
     @Transactional
     public int expireStaleOrders() {
         Instant now = Instant.now();
-        List<UUID> orderIds = jdbcTemplate.query("""
-                select id
+        List<StaleOrder> orders = jdbcTemplate.query("""
+                select id, status
                 from orders
                 where (status = ? and created_at < ?)
                    or (status = ? and created_at < ?)
@@ -45,7 +51,9 @@ public class OrderExpiryService {
                 limit ?
                 for update skip locked
                 """,
-                (rs, rowNum) -> rs.getObject("id", UUID.class),
+                (rs, rowNum) -> new StaleOrder(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("status")),
                 PENDING,
                 now.minus(PENDING_TTL),
                 PENDING_CONFIRMATION,
@@ -53,11 +61,18 @@ public class OrderExpiryService {
                 BATCH_SIZE);
 
         int expired = 0;
-        for (UUID orderId : orderIds) {
-            if (orderReleaseService.markExpiredAndRelease(orderId)) {
+        for (StaleOrder order : orders) {
+            if (PENDING_CONFIRMATION.equals(order.status())
+                    && paymentOrderService.reconcilePendingConfirmation(order.id())) {
+                continue;
+            }
+            if (orderReleaseService.markExpiredAndRelease(order.id())) {
                 expired++;
             }
         }
         return expired;
+    }
+
+    private record StaleOrder(UUID id, String status) {
     }
 }

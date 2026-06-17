@@ -7,7 +7,9 @@ import com.ticketbox.auth.model.UserRole;
 import com.ticketbox.auth.repository.UserRepository;
 import com.ticketbox.auth.security.AuthJwtUtil;
 import com.ticketbox.concert.cache.ConcertCache;
+import com.ticketbox.payment.service.PaymentOrderService;
 import com.ticketbox.ticket.service.OrderExpiryService;
+import com.ticketbox.ticket.service.OrderReleaseService;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -83,6 +85,12 @@ class TicketPurchaseIntegrationTest {
     private OrderExpiryService orderExpiryService;
 
     @Autowired
+    private OrderReleaseService orderReleaseService;
+
+    @Autowired
+    private PaymentOrderService paymentOrderService;
+
+    @Autowired
     @Qualifier("testTicketPurchaseCache")
     private InMemoryConcertCache concertCache;
 
@@ -109,7 +117,9 @@ class TicketPurchaseIntegrationTest {
         assertThat(first.status()).isEqualTo(HttpStatus.OK.value());
         UUID orderId = UUID.fromString(first.json().get("orderId").asText());
         String generatedKey = first.headers().firstValue("Idempotency-Key").orElseThrow();
-        assertThat(first.json().get("paymentUrl").asText()).isEqualTo("mock-payment://orders/" + orderId);
+        assertThat(first.json().get("paymentUrl").asText())
+                .startsWith("https://sandbox.vnpay.test/pay?")
+                .contains("vnp_TxnRef=" + orderId);
         assertThat(remainingQuantity(ticketTypeId)).isEqualTo(4);
 
         TestResponse duplicate = postPurchase(token, generatedKey, ticketTypeId, 1);
@@ -188,6 +198,86 @@ class TicketPurchaseIntegrationTest {
         assertThat(secondPurchase.status()).isEqualTo(HttpStatus.OK.value());
     }
 
+    @Test
+    void vnpayCallbackMarksPendingOrderPaidAndOrderOwnerCanPollStatus() throws Exception {
+        String token = tokenFor(saveUser("callback-buyer@ticketbox.vn", UserRole.AUDIENCE));
+        UUID concertId = createPublishedConcert("PAYMENT-CALLBACK");
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
+        UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
+
+        assertThat(getJson("/api/orders/" + orderId, token).json().get("status").asText()).isEqualTo("PENDING");
+        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+                .isEqualTo(HttpStatus.OK.value());
+
+        JsonNode order = getJson("/api/orders/" + orderId, token).json();
+        assertThat(order.get("status").asText()).isEqualTo("PAID");
+        assertThat(order.get("paymentRef").asText()).isEqualTo(orderId.toString());
+    }
+
+    @Test
+    void invalidGatewaySignatureIsRejectedWithoutChangingOrderStatus() throws Exception {
+        String token = tokenFor(saveUser("invalid-callback@ticketbox.vn", UserRole.AUDIENCE));
+        UUID concertId = createPublishedConcert("PAYMENT-BAD-SIGNATURE");
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID orderId = UUID.fromString(postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1)
+                .json()
+                .get("orderId")
+                .asText());
+
+        TestResponse response = getJson(
+                "/api/payments/vnpay/callback?vnp_TxnRef=" + orderId + "&vnp_ResponseCode=00",
+                null);
+
+        assertThat(response.status()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
+                .isEqualTo("PENDING");
+    }
+
+    @Test
+    void pendingConfirmationReconcilesOnDelayedCallback() throws Exception {
+        String token = tokenFor(saveUser("pending-confirmation@ticketbox.vn", UserRole.AUDIENCE));
+        UUID concertId = createPublishedConcert("PAYMENT-PENDING-CONFIRMATION");
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
+        UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
+        paymentOrderService.markPendingConfirmation(orderId);
+
+        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+                .isEqualTo(HttpStatus.OK.value());
+
+        assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
+                .isEqualTo("PAID");
+    }
+
+    @Test
+    void lateSuccessForExpiredOrderRequiresRefundAndOrganizerCanMarkRefunded() throws Exception {
+        String token = tokenFor(saveUser("late-success@ticketbox.vn", UserRole.AUDIENCE));
+        String eventCode = "PAYMENT-LATE-SUCCESS";
+        UUID concertId = createPublishedConcert(eventCode);
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
+        UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
+        assertThat(orderReleaseService.markExpiredAndRelease(orderId)).isTrue();
+
+        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+                .isEqualTo(HttpStatus.OK.value());
+        assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
+                .isEqualTo("REFUND_REQUIRED");
+
+        String organizerToken = tokenFor(userRepository
+                .findByEmailIgnoreCase(eventCode.toLowerCase() + "@ticketbox.vn")
+                .orElseThrow());
+        JsonNode refunds = getJson(
+                "/api/admin/orders?concertId=" + concertId + "&status=REFUND_REQUIRED",
+                organizerToken).json();
+        assertThat(refunds.size()).isEqualTo(1);
+        assertThat(postNoBody("/api/admin/orders/" + orderId + "/mark-refunded", organizerToken).status())
+                .isEqualTo(HttpStatus.NO_CONTENT.value());
+        assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
+                .isEqualTo("REFUNDED");
+    }
+
     private List<Integer> runConcurrent(int poolSize, int requestCount, ThrowingIntFunction<Integer> task)
             throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
@@ -230,6 +320,37 @@ class TicketPurchaseIntegrationTest {
                 ? objectMapper.createObjectNode()
                 : objectMapper.readTree(response.body());
         return new TestResponse(response.statusCode(), json, response.headers());
+    }
+
+    private TestResponse getJson(String path, String bearerToken) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url(path))).GET();
+        addBearer(builder, bearerToken);
+        return send(builder.build());
+    }
+
+    private TestResponse postNoBody(String path, String bearerToken) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url(path)))
+                .POST(HttpRequest.BodyPublishers.noBody());
+        addBearer(builder, bearerToken);
+        return send(builder.build());
+    }
+
+    private TestResponse send(HttpRequest request) throws Exception {
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        JsonNode json = response.body() == null || response.body().isBlank()
+                ? objectMapper.createObjectNode()
+                : objectMapper.readTree(response.body());
+        return new TestResponse(response.statusCode(), json, response.headers());
+    }
+
+    private void addBearer(HttpRequest.Builder builder, String bearerToken) {
+        if (bearerToken != null) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+    }
+
+    private String query(TestResponse purchase) {
+        return URI.create(purchase.json().get("paymentUrl").asText()).getRawQuery();
     }
 
     private UUID createPublishedConcert(String eventCode) {
