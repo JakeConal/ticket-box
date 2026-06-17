@@ -1,11 +1,9 @@
 package com.ticketbox.auth.service;
 
 import com.ticketbox.auth.security.UserPrincipal;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -13,14 +11,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class OrganizerOwnershipService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final AuthenticatedUserService authenticatedUserService;
 
-    public OrganizerOwnershipService(JdbcTemplate jdbcTemplate) {
+    public OrganizerOwnershipService(JdbcTemplate jdbcTemplate, AuthenticatedUserService authenticatedUserService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.authenticatedUserService = authenticatedUserService;
     }
 
     public void requireOwnedConcert(UUID concertId) {
-        UserPrincipal principal = currentUser()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required"));
+        UserPrincipal principal = authenticatedUserService.requireCurrentUser();
         if (!ownsConcert(principal.id(), concertId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Concert is not owned by this organizer");
         }
@@ -33,14 +32,5 @@ public class OrganizerOwnershipService {
                 concertId,
                 organizerId);
         return Boolean.TRUE.equals(owned);
-    }
-
-    private Optional<UserPrincipal> currentUser() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication() == null
-                ? null
-                : SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return principal instanceof UserPrincipal userPrincipal
-                ? Optional.of(userPrincipal)
-                : Optional.empty();
     }
 }

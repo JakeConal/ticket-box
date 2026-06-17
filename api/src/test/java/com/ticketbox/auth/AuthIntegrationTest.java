@@ -68,15 +68,10 @@ class AuthIntegrationTest {
 
     @BeforeEach
     void resetData() {
-        jdbcTemplate.execute("drop table if exists concerts");
+        jdbcTemplate.execute("delete from ticket_types");
+        jdbcTemplate.execute("delete from concerts");
         jdbcTemplate.execute("delete from refresh_tokens");
         userRepository.deleteAll();
-        jdbcTemplate.execute("""
-                create table concerts (
-                    id uuid primary key,
-                    created_by uuid not null
-                )
-                """);
     }
 
     @Test
@@ -126,7 +121,22 @@ class AuthIntegrationTest {
         User owner = saveUser("owner@ticketbox.vn", UserRole.ORGANIZER);
         User other = saveUser("other@ticketbox.vn", UserRole.ORGANIZER);
         UUID concertId = UUID.randomUUID();
-        jdbcTemplate.update("insert into concerts (id, created_by) values (?, ?)", concertId, owner.getId());
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                insert into concerts (
+                    id,
+                    name,
+                    venue,
+                    event_date,
+                    status,
+                    event_code,
+                    created_by,
+                    created_at,
+                    updated_at,
+                    bio_generation_id
+                )
+                values (?, 'Owned Concert', 'HCMC Stadium', ?, 'DRAFT', 'AUTH-OWNERSHIP', ?, ?, ?, 0)
+                """, concertId, now.plusSeconds(86_400), owner.getId(), now, now);
 
         String otherToken = login("other@ticketbox.vn");
 

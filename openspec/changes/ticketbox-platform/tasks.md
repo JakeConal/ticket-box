@@ -42,17 +42,17 @@
 
 ## 4. Concert Management
 
-- [ ] 4.1 Implement `GET /api/concerts` — paginated listing of PUBLISHED concerts only (DRAFT and CANCELLED excluded); serve from Redis cache (TTL 5 min), fall through to DB on miss
-- [ ] 4.2 Implement `GET /api/concerts/{id}` — concert detail with ticket types; PUBLISHED concerts only (404 for DRAFT unless requester is the owning ORGANIZER); Redis cache (TTL 60s), active invalidation on update
-- [ ] 4.3 Implement `POST /api/admin/concerts` — ORGANIZER only; create concert with metadata and SVG seat map; status starts at DRAFT (not publicly visible)
-- [ ] 4.4 Implement `PUT /api/admin/concerts/{id}` — ORGANIZER only; update concert metadata; invalidate detail + listing cache
-- [ ] 4.5 Implement `DELETE /api/admin/concerts/{id}` — ORGANIZER only; set concert status CANCELLED; transition existing PAID orders for that concert to REFUND_REQUIRED without restoring inventory; invalidate caches; trigger cancellation notification
-- [ ] 4.6 Implement `POST /api/admin/concerts/{id}/ticket-types` — ORGANIZER only; create ticket type with per-user limit validation
-- [ ] 4.7 Implement `PUT /api/admin/concerts/{id}/ticket-types/{typeId}` — ORGANIZER only; update ticket type config; after any committed `remaining_quantity` change, invalidate `tickets:available:{ticketTypeId}`
-- [ ] 4.8 Implement `GET /api/admin/concerts/{id}/stats` — ORGANIZER only; revenue total, tickets sold per type, check-in count
-- [ ] 4.9 Implement `POST /api/admin/concerts/{id}/publish` — ORGANIZER only (ownership-checked); validate the concert has at least one ticket type and required metadata, transition DRAFT → PUBLISHED, invalidate listing cache; return 409 if not in DRAFT status
-- [ ] 4.10 Implement `GET /api/concerts/{id}/availability` — public read endpoint for display-only availability by ticket type/zone; served from the short-TTL availability cache and never used by the purchase write path for correctness
-- [ ] 4.11 Write unit tests for concert validation (missing fields, past event date rejection, per-user limit > quantity rejection), lifecycle (DRAFT invisible publicly, publish makes it visible, publish of non-DRAFT returns 409), and availability route cache behavior
+- [x] 4.1 Implement `GET /api/concerts` — paginated listing of PUBLISHED concerts only (DRAFT and CANCELLED excluded); serve from Redis cache (TTL 5 min), fall through to DB on miss
+- [x] 4.2 Implement `GET /api/concerts/{id}` — concert detail with ticket types; PUBLISHED concerts only (404 for DRAFT unless requester is the owning ORGANIZER); Redis cache (TTL 60s), active invalidation on update
+- [x] 4.3 Implement `POST /api/admin/concerts` — ORGANIZER only; create concert with metadata and SVG seat map; status starts at DRAFT (not publicly visible)
+- [x] 4.4 Implement `PUT /api/admin/concerts/{id}` — ORGANIZER only; update concert metadata; invalidate detail + listing cache
+- [x] 4.5 Implement `DELETE /api/admin/concerts/{id}` — ORGANIZER only; set concert status CANCELLED; transition existing PAID orders for that concert to REFUND_REQUIRED without restoring inventory; invalidate caches; trigger cancellation notification
+- [x] 4.6 Implement `POST /api/admin/concerts/{id}/ticket-types` — ORGANIZER only; create ticket type with per-user limit validation
+- [x] 4.7 Implement `PUT /api/admin/concerts/{id}/ticket-types/{typeId}` — ORGANIZER only; update ticket type config; after any committed `remaining_quantity` change, invalidate `tickets:available:{ticketTypeId}`
+- [x] 4.8 Implement `GET /api/admin/concerts/{id}/stats` — ORGANIZER only; revenue total, tickets sold per type, check-in count
+- [x] 4.9 Implement `POST /api/admin/concerts/{id}/publish` — ORGANIZER only (ownership-checked); validate the concert has at least one ticket type and required metadata, transition DRAFT → PUBLISHED, invalidate listing cache; return 409 if not in DRAFT status
+- [x] 4.10 Implement `GET /api/concerts/{id}/availability` — public read endpoint for display-only availability by ticket type/zone; served from the short-TTL availability cache and never used by the purchase write path for correctness
+- [x] 4.11 Write unit tests for concert validation (missing fields, past event date rejection, per-user limit > quantity rejection), lifecycle (DRAFT invisible publicly, publish makes it visible, publish of non-DRAFT returns 409), and availability route cache behavior
 
 ## 5. Ticket Purchase & Inventory
 
