@@ -9,6 +9,7 @@ import com.ticketbox.payment.gateway.PaymentGatewayManager;
 import com.ticketbox.payment.gateway.PaymentGatewayRequest;
 import com.ticketbox.payment.gateway.PaymentVerificationResult;
 import com.ticketbox.ticket.dto.PaymentProvider;
+import com.ticketbox.ticket.service.TicketIssuanceService;
 import com.ticketbox.ticket.service.OrderReleaseService;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -36,6 +37,7 @@ public class PaymentOrderService {
     private final JdbcTemplate jdbcTemplate;
     private final PaymentGatewayManager paymentGatewayManager;
     private final OrderReleaseService orderReleaseService;
+    private final TicketIssuanceService ticketIssuanceService;
     private final AuthenticatedUserService authenticatedUserService;
     private final OrganizerOwnershipService organizerOwnershipService;
 
@@ -43,11 +45,13 @@ public class PaymentOrderService {
             JdbcTemplate jdbcTemplate,
             PaymentGatewayManager paymentGatewayManager,
             OrderReleaseService orderReleaseService,
+            TicketIssuanceService ticketIssuanceService,
             AuthenticatedUserService authenticatedUserService,
             OrganizerOwnershipService organizerOwnershipService) {
         this.jdbcTemplate = jdbcTemplate;
         this.paymentGatewayManager = paymentGatewayManager;
         this.orderReleaseService = orderReleaseService;
+        this.ticketIssuanceService = ticketIssuanceService;
         this.authenticatedUserService = authenticatedUserService;
         this.organizerOwnershipService = organizerOwnershipService;
     }
@@ -124,6 +128,7 @@ public class PaymentOrderService {
                         paid_at = ?
                     where id = ?
                     """, PAID, paymentRef, Instant.now(), orderId);
+            ticketIssuanceService.issueTicketsForPaidOrder(orderId);
         }
     }
 

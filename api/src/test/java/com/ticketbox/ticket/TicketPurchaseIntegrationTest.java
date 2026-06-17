@@ -8,17 +8,23 @@ import com.ticketbox.auth.repository.UserRepository;
 import com.ticketbox.auth.security.AuthJwtUtil;
 import com.ticketbox.concert.cache.ConcertCache;
 import com.ticketbox.payment.service.PaymentOrderService;
+import com.ticketbox.ticket.qr.QrTokenService;
 import com.ticketbox.ticket.service.OrderExpiryService;
 import com.ticketbox.ticket.service.OrderReleaseService;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +35,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +53,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {
@@ -91,6 +101,9 @@ class TicketPurchaseIntegrationTest {
     private PaymentOrderService paymentOrderService;
 
     @Autowired
+    private QrTokenService qrTokenService;
+
+    @Autowired
     @Qualifier("testTicketPurchaseCache")
     private InMemoryConcertCache concertCache;
 
@@ -98,6 +111,7 @@ class TicketPurchaseIntegrationTest {
     void resetData() {
         createAuxiliaryTables();
         jdbcTemplate.execute("delete from order_items");
+        jdbcTemplate.execute("delete from tickets");
         jdbcTemplate.execute("delete from idempotency_keys");
         jdbcTemplate.execute("delete from orders");
         jdbcTemplate.execute("delete from ticket_types");
@@ -118,8 +132,10 @@ class TicketPurchaseIntegrationTest {
         UUID orderId = UUID.fromString(first.json().get("orderId").asText());
         String generatedKey = first.headers().firstValue("Idempotency-Key").orElseThrow();
         assertThat(first.json().get("paymentUrl").asText())
-                .startsWith("https://sandbox.vnpay.test/pay?")
-                .contains("vnp_TxnRef=" + orderId);
+                .startsWith("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?")
+                .contains("vnp_Command=pay")
+                .contains("vnp_TmnCode=DEVTMN01")
+                .contains("vnp_TxnRef=" + orderId.toString().replace("-", ""));
         assertThat(remainingQuantity(ticketTypeId)).isEqualTo(4);
 
         TestResponse duplicate = postPurchase(token, generatedKey, ticketTypeId, 1);
@@ -202,28 +218,50 @@ class TicketPurchaseIntegrationTest {
     void vnpayCallbackMarksPendingOrderPaidAndOrderOwnerCanPollStatus() throws Exception {
         String token = tokenFor(saveUser("callback-buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PAYMENT-CALLBACK");
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
-        TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 2, Instant.now().minus(Duration.ofMinutes(1)));
+        TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 2);
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
 
         assertThat(getJson("/api/orders/" + orderId, token).json().get("status").asText()).isEqualTo("PENDING");
-        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
                 .isEqualTo(HttpStatus.OK.value());
 
         JsonNode order = getJson("/api/orders/" + orderId, token).json();
         assertThat(order.get("status").asText()).isEqualTo("PAID");
-        assertThat(order.get("paymentRef").asText()).isEqualTo(orderId.toString());
+        assertThat(order.get("paymentRef").asText()).isEqualTo(orderId.toString().replace("-", ""));
+        JsonNode tickets = getJson("/api/orders/" + orderId + "/tickets", token).json();
+        assertThat(tickets.size()).isEqualTo(2);
+        String firstQrToken = tickets.get(0).get("qrToken").asText();
+        String secondQrToken = tickets.get(1).get("qrToken").asText();
+        assertThat(firstQrToken).isNotEqualTo(secondQrToken);
+        assertThat(tickets.get(0).get("qrPngBase64").asText()).isNotBlank();
+        assertThat(qrTokenService.verify(firstQrToken).orderId()).isEqualTo(orderId);
+        assertThatThrownBy(() -> qrTokenService.verify(firstQrToken + "tampered"))
+                .isInstanceOf(RuntimeException.class);
     }
 
     @Test
     void invalidGatewaySignatureIsRejectedWithoutChangingOrderStatus() throws Exception {
-        String token = tokenFor(saveUser("invalid-callback@ticketbox.vn", UserRole.AUDIENCE));
+        User buyer = saveUser("invalid-callback@ticketbox.vn", UserRole.AUDIENCE);
         UUID concertId = createPublishedConcert("PAYMENT-BAD-SIGNATURE");
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
-        UUID orderId = UUID.fromString(postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1)
-                .json()
-                .get("orderId")
-                .asText());
+        UUID orderId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into orders (
+                    id,
+                    user_id,
+                    concert_id,
+                    status,
+                    idempotency_key,
+                    payment_provider,
+                    created_at
+                )
+                values (?, ?, ?, 'PENDING', ?, 'VNPAY', ?)
+                """,
+                orderId,
+                buyer.getId(),
+                concertId,
+                UUID.randomUUID().toString(),
+                Instant.now());
 
         TestResponse response = getJson(
                 "/api/payments/vnpay/callback?vnp_TxnRef=" + orderId + "&vnp_ResponseCode=00",
@@ -243,7 +281,7 @@ class TicketPurchaseIntegrationTest {
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
         paymentOrderService.markPendingConfirmation(orderId);
 
-        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
                 .isEqualTo(HttpStatus.OK.value());
 
         assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
@@ -260,7 +298,7 @@ class TicketPurchaseIntegrationTest {
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
         assertThat(orderReleaseService.markExpiredAndRelease(orderId)).isTrue();
 
-        assertThat(getJson("/api/payments/vnpay/callback?" + query(purchase), null).status())
+        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
                 .isEqualTo(HttpStatus.OK.value());
         assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
                 .isEqualTo("REFUND_REQUIRED");
@@ -349,8 +387,67 @@ class TicketPurchaseIntegrationTest {
         }
     }
 
-    private String query(TestResponse purchase) {
-        return URI.create(purchase.json().get("paymentUrl").asText()).getRawQuery();
+    private String successfulVnpayQuery(TestResponse purchase) {
+        Map<String, String> params = parseQuery(URI.create(purchase.json().get("paymentUrl").asText()).getRawQuery());
+        params.remove("vnp_SecureHash");
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_TransactionStatus", "00");
+        params.put("vnp_TransactionNo", params.get("vnp_TxnRef"));
+        params.put("vnp_SecureHash", signVnpay(params));
+        return encodedQuery(params);
+    }
+
+    private Map<String, String> parseQuery(String rawQuery) {
+        Map<String, String> params = new LinkedHashMap<>();
+        for (String pair : rawQuery.split("&")) {
+            int separator = pair.indexOf('=');
+            if (separator >= 0) {
+                params.put(decode(pair.substring(0, separator)), decode(pair.substring(separator + 1)));
+            }
+        }
+        return params;
+    }
+
+    private String signVnpay(Map<String, String> params) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA512");
+            mac.init(new SecretKeySpec("dev-vnpay-secret".getBytes(StandardCharsets.UTF_8), "HmacSHA512"));
+            byte[] digest = mac.doFinal(vnpayCanonical(params).getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder(digest.length * 2);
+            for (byte value : digest) {
+                builder.append(String.format("%02x", value));
+            }
+            return builder.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private String vnpayCanonical(Map<String, String> params) {
+        return params.entrySet()
+                .stream()
+                .filter(entry -> entry.getValue() != null)
+                .filter(entry -> !"vnp_SecureHash".equals(entry.getKey()))
+                .filter(entry -> !"vnp_SecureHashType".equals(entry.getKey()))
+                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .collect(Collectors.joining("&"));
+    }
+
+    private String encodedQuery(Map<String, String> params) {
+        return params.entrySet()
+                .stream()
+                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .collect(Collectors.joining("&"));
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private String decode(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
     }
 
     private UUID createPublishedConcert(String eventCode) {
@@ -493,6 +590,20 @@ class TicketPurchaseIntegrationTest {
                     ticket_type_id uuid not null,
                     quantity integer not null
                 )
+                """);
+        jdbcTemplate.execute("""
+                create table if not exists tickets (
+                    id uuid primary key,
+                    order_id uuid not null,
+                    ticket_type_id uuid not null,
+                    user_id uuid not null,
+                    qr_token varchar(4000) not null,
+                    issued_at timestamp not null
+                )
+                """);
+        jdbcTemplate.execute("""
+                create unique index if not exists ux_tickets_qr_token
+                on tickets(qr_token)
                 """);
         jdbcTemplate.execute("""
                 create table if not exists idempotency_keys (

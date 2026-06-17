@@ -3,6 +3,7 @@ package com.ticketbox.config;
 import com.ticketbox.auth.AuthProperties;
 import com.ticketbox.auth.security.JwtAuthenticationFilter;
 import com.ticketbox.auth.security.TicketBoxUserDetailsService;
+import com.ticketbox.ticket.qr.QrProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +23,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, QrProperties.class})
 public class SecurityConfig {
 
     @Bean
@@ -43,7 +44,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/error", "/api/health", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh").permitAll()
-                        .requestMatchers("/api/payments/vnpay/callback", "/api/payments/momo/callback").permitAll()
+                        .requestMatchers(
+                                "/api/payments/vnpay/callback",
+                                "/api/payments/vnpay/ipn",
+                                "/api/payments/momo/callback").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/concerts", "/api/concerts/*", "/api/concerts/*/availability").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ORGANIZER")
                         .requestMatchers("/api/checker/**", "/api/checkins/**", "/api/vip-guests/**").hasRole("CHECKER")

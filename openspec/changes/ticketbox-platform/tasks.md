@@ -83,11 +83,11 @@
 
 ## 7. QR E-Ticket Generation
 
-- [ ] 7.1 Implement `QrTokenService`: generate JWT-signed payload `{ticketId, orderId, userId, concertId, ticketType, zone, issuedAt}` signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred, RS256 acceptable; include `kid` header for key rotation); the private signing key lives server-side only (D8)
-- [ ] 7.2 On order transition to PAID: generate one QR token per ticket, store in `tickets.qr_token`
-- [ ] 7.3 Implement `GET /api/orders/{id}/tickets` — return list of tickets with QR token (base64 PNG or SVG) for display in frontend
-- [ ] 7.4 Expose `GET /api/checker/key-bundle?concertId=X` — CHECKER only; returns the **public** verification key(s) keyed by `kid` + concert validity window; the private signing key is never sent to devices, so a compromised device cannot forge tickets; app stores the bundle in OS secure storage (Keychain on iOS, Keystore on Android)
-- [ ] 7.5 Write test: verify QR token is unique per ticket, verify tampered token fails validation
+- [x] 7.1 Implement `QrTokenService`: generate JWT-signed payload `{ticketId, orderId, userId, concertId, ticketType, zone, issuedAt}` signed with an **asymmetric** key pair (EdDSA/Ed25519 preferred, RS256 acceptable; include `kid` header for key rotation); the private signing key lives server-side only (D8)
+- [x] 7.2 On order transition to PAID: generate one QR token per ticket, store in `tickets.qr_token`
+- [x] 7.3 Implement `GET /api/orders/{id}/tickets` — return list of tickets with QR token (base64 PNG or SVG) for display in frontend
+- [x] 7.4 Expose `GET /api/checker/key-bundle?concertId=X` — CHECKER only; returns the **public** verification key(s) keyed by `kid` + concert validity window; the private signing key is never sent to devices, so a compromised device cannot forge tickets; app stores the bundle in OS secure storage (Keychain on iOS, Keystore on Android)
+- [x] 7.5 Write test: verify QR token is unique per ticket, verify tampered token fails validation
 
 ## 8. Offline Check-in (Mobile App)
 

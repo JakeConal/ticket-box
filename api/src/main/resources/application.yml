@@ -72,12 +72,15 @@ ticketbox:
       hash-secret: ${VNPAY_HASH_SECRET:}
       pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
       return-url: ${VNPAY_RETURN_URL:http://localhost:8088/api/payments/vnpay/callback}
+      ipn-url: ${VNPAY_IPN_URL:http://localhost:8088/api/payments/vnpay/ipn}
     momo:
       partner-code: ${MOMO_PARTNER_CODE:}
       access-key: ${MOMO_ACCESS_KEY:}
       secret-key: ${MOMO_SECRET_KEY:}
       endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
+      query-endpoint: ${MOMO_QUERY_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/query}
       return-url: ${MOMO_RETURN_URL:http://localhost:8088/api/payments/momo/callback}
+      ipn-url: ${MOMO_IPN_URL:${MOMO_RETURN_URL:http://localhost:8088/api/payments/momo/callback}}
   ai:
     gemini-api-key: ${GEMINI_API_KEY:}
   imports:
