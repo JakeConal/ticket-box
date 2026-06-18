@@ -13,6 +13,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 @Entity
 @Table(name = "concerts")
@@ -135,6 +138,26 @@ public class Concert {
         return artistBio;
     }
 
+    public String getArtistBioDraft() {
+        return artistBioDraft;
+    }
+
+    public BioStatus getBioStatus() {
+        return bioStatus;
+    }
+
+    public String getBioError() {
+        return bioError;
+    }
+
+    public long getBioGenerationId() {
+        return bioGenerationId;
+    }
+
+    public String getArtistPdfUri() {
+        return artistPdfUri;
+    }
+
     public String getSeatMapSvg() {
         return seatMapSvg;
     }
@@ -173,6 +196,64 @@ public class Concert {
 
     public void cancel(Instant updatedAt) {
         this.status = ConcertStatus.CANCELLED;
+        this.updatedAt = updatedAt;
+    }
+
+    public void startBioGeneration(String artistPdfUri, long generationId, Instant updatedAt) {
+        this.artistPdfUri = artistPdfUri;
+        this.bioGenerationId = generationId;
+        this.artistBioDraft = null;
+        this.bioError = null;
+        this.bioStatus = BioStatus.GENERATING;
+        this.updatedAt = updatedAt;
+    }
+
+    public boolean saveBioDraftIfCurrent(long generationId, String draft, Instant updatedAt) {
+        if (this.bioGenerationId != generationId || this.bioStatus != BioStatus.GENERATING) {
+            return false;
+        }
+        this.artistBioDraft = draft;
+        this.bioError = null;
+        this.bioStatus = BioStatus.DRAFT;
+        this.updatedAt = updatedAt;
+        return true;
+    }
+
+    public boolean failBioIfCurrent(long generationId, String error, Instant updatedAt) {
+        if (this.bioGenerationId != generationId || this.bioStatus != BioStatus.GENERATING) {
+            return false;
+        }
+        this.bioError = error;
+        this.bioStatus = BioStatus.FAILED;
+        this.updatedAt = updatedAt;
+        return true;
+    }
+
+    public void editBioDraft(String draftText, Instant updatedAt) {
+        if (!StringUtils.hasText(draftText)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Artist bio draft is required");
+        }
+        this.artistBioDraft = draftText;
+        this.bioError = null;
+        this.bioStatus = BioStatus.DRAFT;
+        this.updatedAt = updatedAt;
+    }
+
+    public void publishBio(Instant updatedAt) {
+        if (!StringUtils.hasText(artistBioDraft)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No artist bio draft is available to publish");
+        }
+        this.artistBio = artistBioDraft;
+        this.artistBioDraft = null;
+        this.bioError = null;
+        this.bioStatus = BioStatus.PUBLISHED;
+        this.updatedAt = updatedAt;
+    }
+
+    public void rejectBio(String reason, Instant updatedAt) {
+        this.artistBioDraft = null;
+        this.bioError = StringUtils.hasText(reason) ? reason.trim() : null;
+        this.bioStatus = BioStatus.REJECTED;
         this.updatedAt = updatedAt;
     }
 }

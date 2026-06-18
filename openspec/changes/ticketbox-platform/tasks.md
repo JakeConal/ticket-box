@@ -139,17 +139,17 @@
 
 ## 12. AI Artist Bio
 
-- [ ] 12.1 Implement `POST /api/admin/concerts/{id}/artist-pdf` — ORGANIZER only; validate real PDF by magic bytes (not extension/Content-Type); reject encrypted/protected PDFs; accept ≤ 20MB; store file; stamp an increasing `bio_generation_id`; set `bio_status = GENERATING`; return 202
-- [ ] 12.2 Implement `ArtistBioProcessor` `@Async` service: extract text using Apache PDFBox bounded by an extraction timeout and page/char ceiling (defuse decompression-bomb PDFs)
-- [ ] 12.3 In `ArtistBioProcessor`: validate extracted text length (≥ 50 chars); on failure, set `bio_status = FAILED` and `bio_error` with the reason
-- [ ] 12.4 Implement Gemini API call behind an `ArtistBioGenerator` interface: send cleaned text (capped to stay within free-tier token limits) with a structured prompt that delimits the press-kit text as untrusted data (prompt-injection hardening); parse response
-- [ ] 12.5 On successful API response: save generated text to `artist_bio_draft` as `bio_status = DRAFT` (NOT public); write only if the task's `bio_generation_id` is still the latest (discard stale late completions)
-- [ ] 12.6 Implement retry: up to 2 retries on Gemini API error (including free-tier 429 quota errors) with exponential backoff; after all fail, set `bio_status = FAILED` and `bio_error`
-- [ ] 12.7 Implement review endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/concerts/{id}/artist-bio` for draft/status/error review, `PUT /api/admin/concerts/{id}/artist-bio` to edit draft text, `POST /api/admin/concerts/{id}/artist-bio/publish` → copy `artist_bio_draft` into public `artist_bio`, clear draft/error fields, set `bio_status = PUBLISHED`, and invalidate concert detail cache, `POST /api/admin/concerts/{id}/artist-bio/reject` → clear draft, set `bio_status = REJECTED`, and keep any previous public `artist_bio`
-- [ ] 12.8 Implement a scheduled reaper: transition any `GENERATING` row older than the threshold (e.g. 5 min) out of GENERATING (re-queue or FAILED) so restarts don't strand bios
-- [ ] 12.9 Rate-limit regenerations per concert/organizer so repeated uploads cannot drain the free-tier quota
-- [ ] 12.10 Expose only public `artist_bio` in `GET /api/concerts/{id}`; if no public bio exists, return placeholder/status data without exposing `artist_bio_draft` or `bio_error`. `GET /api/admin/concerts/{id}/artist-bio` exposes DRAFT/FAILED/REJECTED/GENERATING details and `bio_error` for organizer review
-- [ ] 12.11 Write tests: mock the Gemini API; verify success sets DRAFT (not public); image-only PDF sets FAILED with `bio_error`; 429 sets FAILED "AI service busy"; non-PDF-by-magic-bytes rejected; stale late completion is discarded; reaper clears a stuck GENERATING row; drafts/errors are never exposed publicly; a previously published `artist_bio` remains visible during regeneration
+- [x] 12.1 Implement `POST /api/admin/concerts/{id}/artist-pdf` — ORGANIZER only; validate real PDF by magic bytes (not extension/Content-Type); reject encrypted/protected PDFs; accept ≤ 20MB; store file; stamp an increasing `bio_generation_id`; set `bio_status = GENERATING`; return 202
+- [x] 12.2 Implement `ArtistBioProcessor` `@Async` service: extract text using Apache PDFBox bounded by an extraction timeout and page/char ceiling (defuse decompression-bomb PDFs)
+- [x] 12.3 In `ArtistBioProcessor`: validate extracted text length (≥ 50 chars); on failure, set `bio_status = FAILED` and `bio_error` with the reason
+- [x] 12.4 Implement Gemini API call behind an `ArtistBioGenerator` interface: send cleaned text (capped to stay within free-tier token limits) with a structured prompt that delimits the press-kit text as untrusted data (prompt-injection hardening); parse response
+- [x] 12.5 On successful API response: save generated text to `artist_bio_draft` as `bio_status = DRAFT` (NOT public); write only if the task's `bio_generation_id` is still the latest (discard stale late completions)
+- [x] 12.6 Implement retry: up to 2 retries on Gemini API error (including free-tier 429 quota errors) with exponential backoff; after all fail, set `bio_status = FAILED` and `bio_error`
+- [x] 12.7 Implement review endpoints — ORGANIZER only (ownership-scoped): `GET /api/admin/concerts/{id}/artist-bio` for draft/status/error review, `PUT /api/admin/concerts/{id}/artist-bio` to edit draft text, `POST /api/admin/concerts/{id}/artist-bio/publish` → copy `artist_bio_draft` into public `artist_bio`, clear draft/error fields, set `bio_status = PUBLISHED`, and invalidate concert detail cache, `POST /api/admin/concerts/{id}/artist-bio/reject` → clear draft, set `bio_status = REJECTED`, and keep any previous public `artist_bio`
+- [x] 12.8 Implement a scheduled reaper: transition any `GENERATING` row older than the threshold (e.g. 5 min) out of GENERATING (re-queue or FAILED) so restarts don't strand bios
+- [x] 12.9 Rate-limit regenerations per concert/organizer so repeated uploads cannot drain the free-tier quota
+- [x] 12.10 Expose only public `artist_bio` in `GET /api/concerts/{id}`; if no public bio exists, return placeholder/status data without exposing `artist_bio_draft` or `bio_error`. `GET /api/admin/concerts/{id}/artist-bio` exposes DRAFT/FAILED/REJECTED/GENERATING details and `bio_error` for organizer review
+- [x] 12.11 Write tests: mock the Gemini API; verify success sets DRAFT (not public); image-only PDF sets FAILED with `bio_error`; 429 sets FAILED "AI service busy"; non-PDF-by-magic-bytes rejected; stale late completion is discarded; reaper clears a stuck GENERATING row; drafts/errors are never exposed publicly; a previously published `artist_bio` remains visible during regeneration
 
 ## 13. VIP Guest CSV Import
 
