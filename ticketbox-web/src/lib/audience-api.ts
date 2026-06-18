@@ -56,6 +56,16 @@ export type PurchaseResponse = {
   paymentUrl: string;
 };
 
+export type QueueStatus = {
+  concertId: string;
+  active: boolean;
+  position?: number | null;
+  estimatedWaitSeconds?: number | null;
+  admitted: boolean;
+  admissionToken?: string | null;
+  admissionExpiresAt?: string | null;
+};
+
 export type OrderStatus = {
   orderId: string;
   concertId: string;
@@ -128,6 +138,16 @@ export async function purchaseTickets(draft: PurchaseDraft) {
   });
 }
 
+export async function enterQueue(concertId: string) {
+  return request<QueueStatus>(`/audience-api/queue/${concertId}/enter`, {
+    method: "POST"
+  });
+}
+
+export async function getQueueStatus(concertId: string) {
+  return request<QueueStatus>(`/audience-api/queue/${concertId}/status`);
+}
+
 export async function getOrder(id: string) {
   return request<OrderStatus>(`/audience-api/orders/${id}`);
 }
@@ -196,7 +216,14 @@ async function request<T>(
   }
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    let parsedMessage = "";
+    try {
+      const parsed = JSON.parse(message) as { message?: string; detail?: string; error?: string };
+      parsedMessage = parsed.message || parsed.detail || parsed.error || "";
+    } catch {
+      parsedMessage = message;
+    }
+    throw new Error(parsedMessage || `Request failed with ${response.status}`);
   }
   if (response.status === 204) {
     return null;

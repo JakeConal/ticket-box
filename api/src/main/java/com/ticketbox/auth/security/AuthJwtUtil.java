@@ -58,6 +58,12 @@ public class AuthJwtUtil {
         return claims;
     }
 
+    public Claims parseAdmissionToken(String token) {
+        Claims claims = parse(token);
+        requireType(claims, ADMISSION);
+        return claims;
+    }
+
     public String hashToken(String token) {
         byte[] digest = sha256(token.getBytes(StandardCharsets.UTF_8));
         StringBuilder builder = new StringBuilder(digest.length * 2);

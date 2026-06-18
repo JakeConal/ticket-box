@@ -729,6 +729,33 @@ textarea {
   font-weight: 700;
 }
 
+.queue-panel {
+  background: #f8fafc;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.queue-panel div {
+  display: grid;
+  gap: 4px;
+}
+
+.queue-panel span {
+  color: #5b6472;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.queue-panel strong {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
 .segmented-control {
   background: #f3f4f6;
   border: 1px solid #d8dee4;

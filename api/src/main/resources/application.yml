@@ -61,7 +61,14 @@ ticketbox:
     refresh-token-ttl: ${AUTH_REFRESH_TOKEN_TTL:7d}
   queue:
     jwt-secret: ${QUEUE_JWT_SECRET:change-me-queue-secret}
+    enabled: ${QUEUE_ENABLED:true}
     admission-token-ttl: ${QUEUE_ADMISSION_TOKEN_TTL:3m}
+    active-window-before: ${QUEUE_ACTIVE_WINDOW_BEFORE:5m}
+    active-window-after: ${QUEUE_ACTIVE_WINDOW_AFTER:30m}
+    admit-batch-size: ${QUEUE_ADMIT_BATCH_SIZE:10}
+    admission-delay: ${QUEUE_ADMISSION_DELAY:1s}
+    admission-initial-delay: ${QUEUE_ADMISSION_INITIAL_DELAY:1s}
+    queue-ttl: ${QUEUE_TTL:2h}
   qr:
     key-id: ${QR_KEY_ID:local-dev}
     private-key-path: ${QR_PRIVATE_KEY_PATH:./keys/qr-private.pem}

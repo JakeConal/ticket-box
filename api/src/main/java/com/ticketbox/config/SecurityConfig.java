@@ -4,6 +4,7 @@ import com.ticketbox.auth.AuthProperties;
 import com.ticketbox.auth.security.JwtAuthenticationFilter;
 import com.ticketbox.auth.security.TicketBoxUserDetailsService;
 import com.ticketbox.ratelimit.RateLimitFilter;
+import com.ticketbox.ticket.service.QueueProperties;
 import com.ticketbox.ticket.qr.QrProperties;
 import com.ticketbox.vip.VipImportProperties;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,7 +26,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties({AuthProperties.class, QrProperties.class, VipImportProperties.class})
+@EnableConfigurationProperties({AuthProperties.class, QueueProperties.class, QrProperties.class, VipImportProperties.class})
 public class SecurityConfig {
 
     @Bean

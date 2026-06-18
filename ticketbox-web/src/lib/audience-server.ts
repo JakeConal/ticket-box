@@ -95,6 +95,12 @@ export async function proxyProtectedJson(request: NextRequest, path: string) {
   });
 }
 
+export async function proxyProtectedRead(request: NextRequest, path: string) {
+  return proxyProtected(request, path, {
+    method: request.method
+  });
+}
+
 function publicSession(auth: AuthResponse) {
   return {
     userId: auth.userId,

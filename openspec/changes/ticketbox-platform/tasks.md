@@ -201,14 +201,14 @@
 
 ## 17. Sale-Open Waiting Queue (D16)
 
-- [ ] 17.1 Implement queue store: Redis sorted set per concert (`queue:{concertId}`) scored by enqueue timestamp (FIFO); queue is activated for a configurable window around each ticket type's `sale_opens_at`
-- [ ] 17.2 Implement `POST /api/queue/{concertId}/enter` — authenticated; add user to the ZSET (idempotent re-entry returns existing position), return queue position
-- [ ] 17.3 Implement `GET /api/queue/{concertId}/status` — polling endpoint returning current position and estimated wait; when admitted, returns the signed admission token
-- [ ] 17.4 Implement admission job: scheduled task pops N users/sec (configurable, tied to purchase-path capacity) from the head of the ZSET and issues each a signed, short-lived (2–3 min) admission token (JWT bound to userId + concertId)
-- [ ] 17.5 Enforce admission token on `POST /api/tickets/purchase` while a queue is active for the concert: missing/expired/invalid token → reject and redirect back to the queue
-- [ ] 17.6 Implement fail-safe behavior on Redis outage during an active sale-open window: close the gate (reject new entrants to the purchase path) rather than admitting an unmetered herd; log and alert
-- [ ] 17.7 Implement frontend waiting room page: poll queue status, show "#N in line, est. wait", auto-advance to the purchase page when the admission token is granted
-- [ ] 17.8 Write tests: FIFO ordering (user enqueued earlier is admitted earlier), purchase without valid token rejected, expired token rejected, admission rate bounds concurrent purchase sessions
+- [x] 17.1 Implement queue store: Redis sorted set per concert (`queue:{concertId}`) scored by enqueue timestamp (FIFO); queue is activated for a configurable window around each ticket type's `sale_opens_at`
+- [x] 17.2 Implement `POST /api/queue/{concertId}/enter` — authenticated; add user to the ZSET (idempotent re-entry returns existing position), return queue position
+- [x] 17.3 Implement `GET /api/queue/{concertId}/status` — polling endpoint returning current position and estimated wait; when admitted, returns the signed admission token
+- [x] 17.4 Implement admission job: scheduled task pops N users/sec (configurable, tied to purchase-path capacity) from the head of the ZSET and issues each a signed, short-lived (2–3 min) admission token (JWT bound to userId + concertId)
+- [x] 17.5 Enforce admission token on `POST /api/tickets/purchase` while a queue is active for the concert: missing/expired/invalid token → reject and redirect back to the queue
+- [x] 17.6 Implement fail-safe behavior on Redis outage during an active sale-open window: close the gate (reject new entrants to the purchase path) rather than admitting an unmetered herd; log and alert
+- [x] 17.7 Implement frontend waiting room page: poll queue status, show "#N in line, est. wait", auto-advance to the purchase page when the admission token is granted
+- [x] 17.8 Write tests: FIFO ordering (user enqueued earlier is admitted earlier), purchase without valid token rejected, expired token rejected, admission rate bounds concurrent purchase sessions
 
 ## 18. Testing, Documentation & Final Wiring
 

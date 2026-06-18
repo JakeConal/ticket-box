@@ -66,6 +66,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "ticketbox.auth.jwt-secret=test-secret",
         "ticketbox.auth.access-token-ttl=15m",
         "ticketbox.auth.refresh-token-ttl=7d",
+        "ticketbox.queue.enabled=false",
         "ticketbox.orders.expiry-initial-delay-ms=3600000"
 })
 class TicketPurchaseIntegrationTest {

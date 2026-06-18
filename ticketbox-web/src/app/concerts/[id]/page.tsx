@@ -9,10 +9,12 @@ import {
   TicketAvailability,
   TicketType,
   addOrderToHistory,
+  enterQueue,
   formatDate,
   formatMoney,
   getAvailability,
   getConcert,
+  getQueueStatus,
   getSession,
   purchaseTickets
 } from "../../../lib/audience-api";
@@ -28,6 +30,8 @@ export default function ConcertDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [paymentProvider, setPaymentProvider] = useState<"VNPAY" | "MOMO">("VNPAY");
   const [error, setError] = useState("");
+  const [queueStatus, setQueueStatus] = useState<Awaited<ReturnType<typeof getQueueStatus>> | null>(null);
+  const [pendingPurchase, setPendingPurchase] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -75,6 +79,56 @@ export default function ConcertDetailPage() {
     setQuantity((current) => Math.min(current, maxQuantity));
   }, [maxQuantity]);
 
+  useEffect(() => {
+    if (!pendingPurchase || !queueStatus?.active || queueStatus.admitted) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      getQueueStatus(concertId)
+        .then((nextStatus) => {
+          if (!nextStatus) {
+            return;
+          }
+          setQueueStatus(nextStatus);
+          if (nextStatus.admitted && nextStatus.admissionToken) {
+            setPendingPurchase(false);
+            void completePurchase(nextStatus.admissionToken);
+          }
+        })
+        .catch((caught) => {
+          setPendingPurchase(false);
+          setSubmitting(false);
+          setError(caught instanceof Error ? caught.message : "Waiting room is unavailable");
+        });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [concertId, pendingPurchase, queueStatus?.active, queueStatus?.admitted, selectedTicketId, quantity, paymentProvider]);
+
+  async function completePurchase(admissionToken?: string) {
+    if (!selectedTicket) {
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await purchaseTickets({
+        ticketTypeId: selectedTicket.id,
+        quantity,
+        paymentProvider,
+        admissionToken
+      });
+      if (!result) {
+        return;
+      }
+      addOrderToHistory(result.orderId);
+      window.location.assign(result.paymentUrl);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Purchase failed");
+      setPendingPurchase(false);
+      setSubmitting(false);
+    }
+  }
+
   async function submitPurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedTicket) {
@@ -86,20 +140,19 @@ export default function ConcertDetailPage() {
     }
     setSubmitting(true);
     setError("");
+    setQueueStatus(null);
+    setPendingPurchase(false);
     try {
-      const result = await purchaseTickets({
-        ticketTypeId: selectedTicket.id,
-        quantity,
-        paymentProvider
-      });
-      if (!result) {
+      const nextQueueStatus = await enterQueue(concertId);
+      if (nextQueueStatus?.active && !nextQueueStatus.admitted) {
+        setQueueStatus(nextQueueStatus);
+        setPendingPurchase(true);
+        setSubmitting(false);
         return;
       }
-      addOrderToHistory(result.orderId);
-      window.location.assign(result.paymentUrl);
+      await completePurchase(nextQueueStatus?.admissionToken || undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Purchase failed");
-    } finally {
       setSubmitting(false);
     }
   }
@@ -192,9 +245,21 @@ export default function ConcertDetailPage() {
                   </button>
                 ))}
               </div>
+              {queueStatus?.active ? (
+                <div className="queue-panel" aria-live="polite">
+                  <div>
+                    <span>Queue position</span>
+                    <strong>{queueStatus.position ?? "Admitted"}</strong>
+                  </div>
+                  <div>
+                    <span>Estimated wait</span>
+                    <strong>{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
+                  </div>
+                </div>
+              ) : null}
               {!saleOpen ? <p className="inline-error">Sale opens {formatDate(selectedTicket.saleOpensAt)}.</p> : null}
-              <button className="primary-button" disabled={!canBuy || submitting} type="submit">
-                {submitting ? "Redirecting..." : "Continue to payment"}
+              <button className="primary-button" disabled={!canBuy || submitting || pendingPurchase} type="submit">
+                {pendingPurchase ? "Waiting room" : submitting ? "Redirecting..." : "Continue to payment"}
               </button>
             </form>
           ) : (
