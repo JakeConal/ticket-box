@@ -1,6 +1,6 @@
 # TicketBox — Technical Design
 
-> Tài liệu này trình bày thiết kế theo cấu trúc đề bài. Mỗi quyết định lớn có ADR đầy đủ (bối cảnh, phương án thay thế, trade-off) trong [`../openspec/changes/ticketbox-platform/design.md`](../openspec/changes/ticketbox-platform/design.md) (D1–D16); đặc tả hành vi từng tính năng (kịch bản chính / kịch bản lỗi) trong [`../openspec/changes/ticketbox-platform/specs/`](../openspec/changes/ticketbox-platform/specs/).
+> Tài liệu này trình bày thiết kế theo cấu trúc đề bài. Mỗi quyết định lớn có ADR đầy đủ (bối cảnh, phương án thay thế, trade-off) trong [`../../openspec/changes/ticketbox-platform/design.md`](../../openspec/changes/ticketbox-platform/design.md) (D1–D16); đặc tả hành vi từng tính năng (kịch bản chính / kịch bản lỗi) trong [`../../openspec/changes/ticketbox-platform/specs/`](../../openspec/changes/ticketbox-platform/specs/).
 
 ## 1. Kiến trúc tổng thể
 
@@ -304,7 +304,7 @@ sequenceDiagram
 
 ## 6. Thiết kế kiểm soát truy cập
 
-**Mô hình: RBAC ba vai trò + ownership check** (ADR D7; đặc tả đầy đủ: [`specs/admin-rbac`](../openspec/changes/ticketbox-platform/specs/admin-rbac/spec.md)).
+**Mô hình: RBAC ba vai trò + ownership check** (ADR D7; đặc tả đầy đủ: [`specs/admin-rbac`](../../openspec/changes/ticketbox-platform/specs/admin-rbac/spec.md)).
 
 | | AUDIENCE | ORGANIZER | CHECKER |
 | :--- | :---: | :---: | :---: |
@@ -363,6 +363,6 @@ Cache-aside (lazy load khi miss, ghi lại với TTL) thay vì write-through vì
 
 ## Các quyết định kỹ thuật quan trọng (ADR)
 
-16 ADR đầy đủ trong [`../openspec/changes/ticketbox-platform/design.md`](../openspec/changes/ticketbox-platform/design.md):
+16 ADR đầy đủ trong [`../../openspec/changes/ticketbox-platform/design.md`](../../openspec/changes/ticketbox-platform/design.md):
 
 D1 Modular Monolith · D2 PostgreSQL + Redis · D3 Atomic conditional decrement + reservation lifecycle · D4 Per-user limit hai lớp · D5 Token Bucket · D6 Circuit Breaker + Idempotency · D7 JWT + RBAC · D8 QR ký bất đối xứng (EdDSA ưu tiên / RS256 chấp nhận được) · D9 Offline check-in gate-scoped + SQLite local-first · D10 Cache-aside · D11 AI bio (Gemini + review gate) · D12 CSV import idempotent + reconciliation · D13 Notification Strategy Pattern · D14 Redis Pub/Sub best-effort + transactional outbox · D15 Java 25 / Spring Boot 4 / Gradle · D16 Virtual Waiting Queue

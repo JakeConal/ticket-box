@@ -14,9 +14,9 @@ Thư mục này là **tài liệu nộp cho Phần 1 — Blueprint** của đồ
 | 6. Thiết kế kiểm soát truy cập | [`design.md`](design.md) §6 — RBAC ba vai trò + ownership check, điểm kiểm tra tại API / admin / mobile |
 | 7. Cơ chế bảo vệ hệ thống | [`design.md`](design.md) §7 — waiting queue + rate limiting, circuit breaker, idempotency key, caching |
 | Proposal (vấn đề, mục tiêu, phạm vi) | [`proposal.md`](proposal.md) |
-| Đặc tả chi tiết từng tính năng (specs) | [`../openspec/changes/ticketbox-platform/specs/`](../openspec/changes/ticketbox-platform/specs/) — 10 capability với kịch bản chính / kịch bản lỗi / ràng buộc |
-| ADR đầy đủ (16 quyết định D1–D16) | [`../openspec/changes/ticketbox-platform/design.md`](../openspec/changes/ticketbox-platform/design.md) |
-| Kế hoạch cài đặt (Phần 2) | [`../openspec/changes/ticketbox-platform/tasks.md`](../openspec/changes/ticketbox-platform/tasks.md) |
+| Đặc tả chi tiết từng tính năng (specs) | [`../../openspec/changes/ticketbox-platform/specs/`](../../openspec/changes/ticketbox-platform/specs/) — 10 capability với kịch bản chính / kịch bản lỗi / ràng buộc |
+| ADR đầy đủ (16 quyết định D1–D16) | [`../../openspec/changes/ticketbox-platform/design.md`](../../openspec/changes/ticketbox-platform/design.md) |
+| Kế hoạch cài đặt (Phần 2) | [`../../openspec/changes/ticketbox-platform/tasks.md`](../../openspec/changes/ticketbox-platform/tasks.md) |
 
 ## Sơ đồ
 

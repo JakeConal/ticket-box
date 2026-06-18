@@ -124,3 +124,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# Gradle generated state
+.gradle/
+**/.gradle/
