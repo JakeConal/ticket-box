@@ -182,13 +182,13 @@
 
 ## 15. Public Web Frontend (Next.js)
 
-- [ ] 15.1 Implement concert listing page (`/`): paginated cards with name, date, venue, thumbnail, zone availability badges
-- [ ] 15.2 Implement concert detail page (`/concerts/[id]`): artist info with bio, venue map, interactive SVG seat map with zone availability, buy buttons per zone
-- [ ] 15.3 Implement purchase flow: zone selection → quantity picker → payment provider selection → redirect to gateway URL
-- [ ] 15.4 Implement order confirmation page (`/orders/[id]`): poll order status; on PAID, display QR e-ticket(s) with download option
-- [ ] 15.5 Implement my tickets page (`/me/tickets`): list all purchased tickets with QR codes
-- [ ] 15.6 Implement near-real-time availability update: poll `GET /api/concerts/{id}/availability` every 10s on concert detail page; update zone counts
-- [ ] 15.7 Implement auth pages: register, login, logout; store JWT in httpOnly cookie; handle 401 redirects
+- [x] 15.1 Implement concert listing page (`/`): paginated cards with name, date, venue, thumbnail, zone availability badges
+- [x] 15.2 Implement concert detail page (`/concerts/[id]`): artist info with bio, venue map, interactive SVG seat map with zone availability, buy buttons per zone
+- [x] 15.3 Implement purchase flow: zone selection → quantity picker → payment provider selection → redirect to gateway URL
+- [x] 15.4 Implement order confirmation page (`/orders/[id]`): poll order status; on PAID, display QR e-ticket(s) with download option
+- [x] 15.5 Implement my tickets page (`/me/tickets`): list all purchased tickets with QR codes
+- [x] 15.6 Implement near-real-time availability update: poll `GET /api/concerts/{id}/availability` every 10s on concert detail page; update zone counts
+- [x] 15.7 Implement auth pages: register, login, logout; store JWT in httpOnly cookie; handle 401 redirects
 
 ## 16. Seed Data
 
