@@ -3,6 +3,7 @@ package com.ticketbox.config;
 import com.ticketbox.auth.AuthProperties;
 import com.ticketbox.auth.security.JwtAuthenticationFilter;
 import com.ticketbox.auth.security.TicketBoxUserDetailsService;
+import com.ticketbox.ratelimit.RateLimitFilter;
 import com.ticketbox.ticket.qr.QrProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -30,6 +31,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            RateLimitFilter rateLimitFilter,
             DaoAuthenticationProvider authenticationProvider) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -56,6 +58,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthenticationFilter, AuthorizationFilter.class)
+                .addFilterAfter(rateLimitFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 

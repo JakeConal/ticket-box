@@ -122,12 +122,12 @@
 
 ## 10. Rate Limiting
 
-- [ ] 10.1 Implement Redis Lua script for Token Bucket: atomically check and decrement bucket; return remaining tokens and retry-after seconds
-- [ ] 10.2 Implement `RateLimitFilter` (Spring `OncePerRequestFilter`): extract IP and userId; run Lua script; return 429 with `Retry-After` header on exhaustion
-- [ ] 10.3 Configure per-endpoint buckets: purchase endpoint (5 req / 10s burst), read endpoints (60 req / min), default (30 req / 10s)
-- [ ] 10.4 Implement dual-key limiting: check both IP bucket and userId bucket (if authenticated); reject if either is exhausted
-- [ ] 10.5 Implement fail-open: if Redis is unreachable during rate limit check, allow request and log warning
-- [ ] 10.6 Write test: 100 concurrent requests from same IP — assert exactly the allowed burst count succeeds, rest receive 429
+- [x] 10.1 Implement Redis Lua script for Token Bucket: atomically check and decrement bucket; return remaining tokens and retry-after seconds
+- [x] 10.2 Implement `RateLimitFilter` (Spring `OncePerRequestFilter`): extract IP and userId; run Lua script; return 429 with `Retry-After` header on exhaustion
+- [x] 10.3 Configure per-endpoint buckets: purchase endpoint (5 req / 10s burst), read endpoints (60 req / min), default (30 req / 10s)
+- [x] 10.4 Implement dual-key limiting: check both IP bucket and userId bucket (if authenticated); reject if either is exhausted
+- [x] 10.5 Implement fail-open: if Redis is unreachable during rate limit check, allow request and log warning
+- [x] 10.6 Write test: 100 concurrent requests from same IP — assert exactly the allowed burst count succeeds, rest receive 429
 
 ## 11. Caching
 
