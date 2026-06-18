@@ -2,6 +2,7 @@ package com.ticketbox.checkin.service;
 
 import com.ticketbox.checkin.dto.VipGuestEnterResponse;
 import com.ticketbox.checkin.dto.VipGuestResponse;
+import com.ticketbox.vip.PhoneNormalizer;
 import java.text.Normalizer;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -20,9 +21,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class VipGuestService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PhoneNormalizer phoneNormalizer;
 
-    public VipGuestService(JdbcTemplate jdbcTemplate) {
+    public VipGuestService(JdbcTemplate jdbcTemplate, PhoneNormalizer phoneNormalizer) {
         this.jdbcTemplate = jdbcTemplate;
+        this.phoneNormalizer = phoneNormalizer;
     }
 
     public List<VipGuestResponse> search(UUID concertId, String query) {
@@ -30,7 +33,7 @@ public class VipGuestService {
         if (trimmed.length() < 2) {
             return List.of();
         }
-        String phoneQuery = normalizePhone(trimmed);
+        String phoneQuery = phoneNormalizer.normalize(trimmed).orElse("");
         String foldedQuery = fold(trimmed);
         return jdbcTemplate.query("""
                 select id,
@@ -49,7 +52,7 @@ public class VipGuestService {
                 """, this::mapGuestRow, concertId)
                 .stream()
                 .filter(guest -> fold(guest.name()).contains(foldedQuery)
-                        || normalizePhone(guest.phoneNormalized()).equals(phoneQuery))
+                        || phoneNormalizer.normalize(guest.phoneNormalized()).orElse("").equals(phoneQuery))
                 .limit(20)
                 .map(this::toResponse)
                 .toList();
@@ -112,10 +115,6 @@ public class VipGuestService {
                 guest.zone(),
                 guest.entered(),
                 guest.enteredAt());
-    }
-
-    private String normalizePhone(String value) {
-        return value.replaceAll("[^0-9+]", "");
     }
 
     private String fold(String value) {

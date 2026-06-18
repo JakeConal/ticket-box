@@ -153,20 +153,20 @@
 
 ## 13. VIP Guest CSV Import
 
-- [ ] 13.1 Implement `VipGuestImportJob` `@Scheduled` at `0 0 2 * * *` (02:00 daily): scan configured import directory for CSV files
-- [ ] 13.2 Implement CSV parser using OpenCSV: case-insensitive header mapping, trim whitespace, skip blank rows
-- [ ] 13.3 Implement phone normalizer (strip spaces/dashes, resolve `0` ↔ `+84` prefix to one canonical form) with unit tests — it anchors upsert idempotency (D12); rows missing the phone column are skipped with a logged reason
-- [ ] 13.4 Implement per-row `event_code → concert_id` resolution against the `concerts` table: unresolvable rows are skipped with a logged reason; if every row in the file is unresolvable, quarantine the whole file to `error/` with an admin alert — never guess a concert
-- [ ] 13.5 Implement idempotent field-level upsert: `INSERT INTO vip_guests ... ON CONFLICT (concert_id, phone_normalized) DO UPDATE SET` sponsor-supplied columns only (name, sponsor, zone, active); never touch system-owned `entered` / `entered_at`
-- [ ] 13.6 Implement snapshot reconciliation scoped to concerts present in the file: after upserting, set `active = false` (soft delete) on `vip_guests` rows absent from the file, only for the concerts the file actually contains — never deactivate guests of concerts the file does not mention
-- [ ] 13.7 Implement per-row error handling: catch parse/validation exceptions per row; log row number and reason; continue to next row
-- [ ] 13.8 Implement file-level error handling: if CSV is entirely unparseable, move to `error/` archive dir; log alert
-- [ ] 13.9 Implement file lifecycle: move successfully processed files to `processed/` and record their content hash in `import_files`; skip already-seen hashes on future runs
-- [ ] 13.10 Implement `POST /api/admin/vip-imports` — ORGANIZER only; manual on-demand import running the same pipeline (resolution, upsert, reconciliation, archiving) for files that arrive after the nightly window; rows resolving to concerts not owned by the requester are rejected/skipped with an audit reason
-- [ ] 13.11 Log import summary after each run: total rows processed, inserted, updated, deactivated, skipped, errored
-- [ ] 13.12 Implement `GET /api/vip-guests` — CHECKER only; search by `concertId` + `q` (phone exact match after normalization, or name fuzzy match using `unaccent()` + `ilike`); only `active = true` guests are admissible; return list of matches with `id`, `name`, `phone_normalized` (partial), `entered`, `entered_at`
-- [ ] 13.13 Implement `POST /api/vip-guests/{id}/enter` — CHECKER only; conditional `UPDATE vip_guests SET entered=true, entered_at=now() WHERE id=? AND entered=false AND active=true`; return 409 if 0 rows affected (already admitted or deactivated)
-- [ ] 13.14 Write tests: process same CSV twice — assert no duplicates; bad rows skipped, valid rows inserted; phone format variants resolve to one guest; guest absent from a later file is deactivated only within concerts present in that file; re-import does not reset `entered`; unknown `event_code` file is quarantined
+- [x] 13.1 Implement `VipGuestImportJob` `@Scheduled` at `0 0 2 * * *` (02:00 daily): scan configured import directory for CSV files
+- [x] 13.2 Implement CSV parser using OpenCSV: case-insensitive header mapping, trim whitespace, skip blank rows
+- [x] 13.3 Implement phone normalizer (strip spaces/dashes, resolve `0` ↔ `+84` prefix to one canonical form) with unit tests — it anchors upsert idempotency (D12); rows missing the phone column are skipped with a logged reason
+- [x] 13.4 Implement per-row `event_code → concert_id` resolution against the `concerts` table: unresolvable rows are skipped with a logged reason; if every row in the file is unresolvable, quarantine the whole file to `error/` with an admin alert — never guess a concert
+- [x] 13.5 Implement idempotent field-level upsert: `INSERT INTO vip_guests ... ON CONFLICT (concert_id, phone_normalized) DO UPDATE SET` sponsor-supplied columns only (name, sponsor, zone, active); never touch system-owned `entered` / `entered_at`
+- [x] 13.6 Implement snapshot reconciliation scoped to concerts present in the file: after upserting, set `active = false` (soft delete) on `vip_guests` rows absent from the file, only for the concerts the file actually contains — never deactivate guests of concerts the file does not mention
+- [x] 13.7 Implement per-row error handling: catch parse/validation exceptions per row; log row number and reason; continue to next row
+- [x] 13.8 Implement file-level error handling: if CSV is entirely unparseable, move to `error/` archive dir; log alert
+- [x] 13.9 Implement file lifecycle: move successfully processed files to `processed/` and record their content hash in `import_files`; skip already-seen hashes on future runs
+- [x] 13.10 Implement `POST /api/admin/vip-imports` — ORGANIZER only; manual on-demand import running the same pipeline (resolution, upsert, reconciliation, archiving) for files that arrive after the nightly window; rows resolving to concerts not owned by the requester are rejected/skipped with an audit reason
+- [x] 13.11 Log import summary after each run: total rows processed, inserted, updated, deactivated, skipped, errored
+- [x] 13.12 Implement `GET /api/vip-guests` — CHECKER only; search by `concertId` + `q` (phone exact match after normalization, or name fuzzy match using `unaccent()` + `ilike`); only `active = true` guests are admissible; return list of matches with `id`, `name`, `phone_normalized` (partial), `entered`, `entered_at`
+- [x] 13.13 Implement `POST /api/vip-guests/{id}/enter` — CHECKER only; conditional `UPDATE vip_guests SET entered=true, entered_at=now() WHERE id=? AND entered=false AND active=true`; return 409 if 0 rows affected (already admitted or deactivated)
+- [x] 13.14 Write tests: process same CSV twice — assert no duplicates; bad rows skipped, valid rows inserted; phone format variants resolve to one guest; guest absent from a later file is deactivated only within concerts present in that file; re-import does not reset `entered`; unknown `event_code` file is quarantined
 
 ## 14. Admin Web Dashboard (Frontend)
 
