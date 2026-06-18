@@ -110,6 +110,7 @@ class TicketPurchaseIntegrationTest {
     @BeforeEach
     void resetData() {
         createAuxiliaryTables();
+        jdbcTemplate.execute("delete from notification_outbox");
         jdbcTemplate.execute("delete from order_items");
         jdbcTemplate.execute("delete from tickets");
         jdbcTemplate.execute("delete from idempotency_keys");
@@ -611,6 +612,18 @@ class TicketPurchaseIntegrationTest {
                     order_id uuid,
                     result varchar(4000),
                     created_at timestamp not null
+                )
+                """);
+        jdbcTemplate.execute("""
+                create table if not exists notification_outbox (
+                    id uuid default random_uuid() primary key,
+                    order_id uuid not null,
+                    event_type varchar(120) not null,
+                    payload clob not null,
+                    status varchar(32) not null default 'PENDING',
+                    attempts integer not null default 0,
+                    created_at timestamp not null default now(),
+                    sent_at timestamp
                 )
                 """);
     }

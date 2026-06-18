@@ -110,15 +110,15 @@
 
 ## 9. Notifications
 
-- [ ] 9.1 Define `NotificationChannel` interface: `send(NotificationEvent event)`
-- [ ] 9.2 Implement `EmailNotificationChannel` using JavaMailSender: purchase confirmation with QR code attachment, 24h reminder, cancellation notice
-- [ ] 9.3 Implement `InAppNotificationChannel` using Server-Sent Events (SSE) or WebSocket: realtime in-app notification to active sessions
-- [ ] 9.4 Implement `NotificationService`: iterate all registered `NotificationChannel` beans; catch per-channel exceptions and continue
-- [ ] 9.5 Implement retry logic for failed email sends: up to 3 retries with exponential backoff; failure does not affect order status
-- [ ] 9.6 Implement scheduled 24h reminder job: `@Scheduled` cron; query concerts starting in 22–26 hours; dispatch reminder events for all PAID ticket holders
-- [ ] 9.7 Implement transactional outbox for must-arrive e-ticket delivery (D14): write a `notification_outbox` row in the same DB transaction that marks the order PAID; a scheduled worker polls PENDING/FAILED outbox rows and delivers via the email channel with retry until acknowledged (status SENT), incrementing `attempts` and backing off on failure
-- [ ] 9.8 Wire notification dispatch into: post-payment flow (e-ticket confirmation via outbox; in-app toast fire-and-forget via Redis Pub/Sub), concert cancellation handler (cancellation notice), 24h reminder job (best-effort Pub/Sub)
-- [ ] 9.9 Write test: verify email channel failure does not propagate exception to caller; verify reminder job fires for correct concerts; verify an outbox row written before a simulated crash is still delivered by the worker after restart
+- [x] 9.1 Define `NotificationChannel` interface: `send(NotificationEvent event)`
+- [x] 9.2 Implement `EmailNotificationChannel` using JavaMailSender: purchase confirmation with QR code attachment, 24h reminder, cancellation notice
+- [x] 9.3 Implement `InAppNotificationChannel` using Server-Sent Events (SSE) or WebSocket: realtime in-app notification to active sessions
+- [x] 9.4 Implement `NotificationService`: iterate all registered `NotificationChannel` beans; catch per-channel exceptions and continue
+- [x] 9.5 Implement retry logic for failed email sends: up to 3 retries with exponential backoff; failure does not affect order status
+- [x] 9.6 Implement scheduled 24h reminder job: `@Scheduled` cron; query concerts starting in 22–26 hours; dispatch reminder events for all PAID ticket holders
+- [x] 9.7 Implement transactional outbox for must-arrive e-ticket delivery (D14): write a `notification_outbox` row in the same DB transaction that marks the order PAID; a scheduled worker polls PENDING/FAILED outbox rows and delivers via the email channel with retry until acknowledged (status SENT), incrementing `attempts` and backing off on failure
+- [x] 9.8 Wire notification dispatch into: post-payment flow (e-ticket confirmation via outbox; in-app toast fire-and-forget via Redis Pub/Sub), concert cancellation handler (cancellation notice), 24h reminder job (best-effort Pub/Sub)
+- [x] 9.9 Write test: verify email channel failure does not propagate exception to caller; verify reminder job fires for correct concerts; verify an outbox row written before a simulated crash is still delivered by the worker after restart
 
 ## 10. Rate Limiting
 

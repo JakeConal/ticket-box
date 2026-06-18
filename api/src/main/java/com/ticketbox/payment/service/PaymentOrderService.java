@@ -3,6 +3,9 @@ package com.ticketbox.payment.service;
 import com.ticketbox.auth.security.UserPrincipal;
 import com.ticketbox.auth.service.AuthenticatedUserService;
 import com.ticketbox.auth.service.OrganizerOwnershipService;
+import com.ticketbox.notification.NotificationEventFactory;
+import com.ticketbox.notification.NotificationOutboxService;
+import com.ticketbox.notification.NotificationService;
 import com.ticketbox.payment.dto.AdminOrderResponse;
 import com.ticketbox.payment.dto.OrderStatusResponse;
 import com.ticketbox.payment.gateway.PaymentGatewayManager;
@@ -40,6 +43,9 @@ public class PaymentOrderService {
     private final TicketIssuanceService ticketIssuanceService;
     private final AuthenticatedUserService authenticatedUserService;
     private final OrganizerOwnershipService organizerOwnershipService;
+    private final NotificationOutboxService notificationOutboxService;
+    private final NotificationEventFactory notificationEventFactory;
+    private final NotificationService notificationService;
 
     public PaymentOrderService(
             JdbcTemplate jdbcTemplate,
@@ -47,13 +53,19 @@ public class PaymentOrderService {
             OrderReleaseService orderReleaseService,
             TicketIssuanceService ticketIssuanceService,
             AuthenticatedUserService authenticatedUserService,
-            OrganizerOwnershipService organizerOwnershipService) {
+            OrganizerOwnershipService organizerOwnershipService,
+            NotificationOutboxService notificationOutboxService,
+            NotificationEventFactory notificationEventFactory,
+            NotificationService notificationService) {
         this.jdbcTemplate = jdbcTemplate;
         this.paymentGatewayManager = paymentGatewayManager;
         this.orderReleaseService = orderReleaseService;
         this.ticketIssuanceService = ticketIssuanceService;
         this.authenticatedUserService = authenticatedUserService;
         this.organizerOwnershipService = organizerOwnershipService;
+        this.notificationOutboxService = notificationOutboxService;
+        this.notificationEventFactory = notificationEventFactory;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -129,6 +141,8 @@ public class PaymentOrderService {
                     where id = ?
                     """, PAID, paymentRef, Instant.now(), orderId);
             ticketIssuanceService.issueTicketsForPaidOrder(orderId);
+            notificationOutboxService.enqueuePurchaseConfirmation(orderId);
+            notificationService.sendInApp(notificationEventFactory.inAppPurchaseConfirmation(orderId));
         }
     }
 
