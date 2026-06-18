@@ -3,7 +3,7 @@ package com.ticketbox.concert.service;
 import com.ticketbox.auth.security.UserPrincipal;
 import com.ticketbox.auth.service.AuthenticatedUserService;
 import com.ticketbox.auth.service.OrganizerOwnershipService;
-import com.ticketbox.concert.cache.ConcertCache;
+import com.ticketbox.concert.cache.ConcertCacheService;
 import com.ticketbox.concert.dto.ConcertDetailResponse;
 import com.ticketbox.concert.dto.ConcertPageResponse;
 import com.ticketbox.concert.dto.ConcertRequest;
@@ -21,7 +21,6 @@ import com.ticketbox.concert.repository.TicketTypeRepository;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -38,13 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ConcertService {
 
-    private static final Duration LIST_TTL = Duration.ofMinutes(5);
-    private static final Duration DETAIL_TTL = Duration.ofSeconds(60);
-    private static final Duration AVAILABILITY_TTL = Duration.ofSeconds(10);
-
     private final ConcertRepository concertRepository;
     private final TicketTypeRepository ticketTypeRepository;
-    private final ConcertCache concertCache;
+    private final ConcertCacheService concertCacheService;
     private final AuthenticatedUserService authenticatedUserService;
     private final OrganizerOwnershipService organizerOwnershipService;
     private final JdbcTemplate jdbcTemplate;
@@ -53,14 +48,14 @@ public class ConcertService {
     public ConcertService(
             ConcertRepository concertRepository,
             TicketTypeRepository ticketTypeRepository,
-            ConcertCache concertCache,
+            ConcertCacheService concertCacheService,
             AuthenticatedUserService authenticatedUserService,
             OrganizerOwnershipService organizerOwnershipService,
             JdbcTemplate jdbcTemplate,
             ApplicationEventPublisher eventPublisher) {
         this.concertRepository = concertRepository;
         this.ticketTypeRepository = ticketTypeRepository;
-        this.concertCache = concertCache;
+        this.concertCacheService = concertCacheService;
         this.authenticatedUserService = authenticatedUserService;
         this.organizerOwnershipService = organizerOwnershipService;
         this.jdbcTemplate = jdbcTemplate;
@@ -71,27 +66,25 @@ public class ConcertService {
     public ConcertPageResponse listPublished(int page, int size) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        String cacheKey = "concerts:list:page:%d:size:%d".formatted(safePage, safeSize);
-        return concertCache.get(cacheKey, ConcertPageResponse.class)
-                .orElseGet(() -> {
-                    Page<Concert> concerts = concertRepository.findByStatusOrderByEventDateAsc(
-                            ConcertStatus.PUBLISHED,
-                            PageRequest.of(safePage, safeSize));
-                    ConcertPageResponse response = new ConcertPageResponse(
-                            concerts.getContent().stream().map(ConcertSummaryResponse::from).toList(),
-                            safePage,
-                            safeSize,
-                            concerts.getTotalElements(),
-                            concerts.getTotalPages());
-                    concertCache.put(cacheKey, response, LIST_TTL);
-                    return response;
-                });
+        return concertCacheService.getListing(safePage, safeSize, () -> {
+            Page<Concert> concerts = concertRepository.findByStatusOrderByEventDateAsc(
+                    ConcertStatus.PUBLISHED,
+                    PageRequest.of(safePage, safeSize));
+            return new ConcertPageResponse(
+                    concerts.getContent().stream().map(ConcertSummaryResponse::from).toList(),
+                    safePage,
+                    safeSize,
+                    concerts.getTotalElements(),
+                    concerts.getTotalPages());
+        });
     }
 
     @Transactional(readOnly = true)
     public ConcertDetailResponse getPublicDetail(UUID concertId) {
-        return concertCache.get(detailKey(concertId), ConcertDetailResponse.class)
-                .orElseGet(() -> loadDetail(concertId));
+        return concertCacheService.getDetail(
+                concertId,
+                () -> loadDetail(concertId),
+                response -> response.status() == ConcertStatus.PUBLISHED);
     }
 
     @Transactional
@@ -109,7 +102,7 @@ public class ConcertService {
                 organizer.id(),
                 Instant.now());
         Concert saved = concertRepository.save(concert);
-        invalidateListing();
+        invalidateConcertAndListings(saved.getId());
         return ConcertDetailResponse.from(saved);
     }
 
@@ -128,7 +121,7 @@ public class ConcertService {
                 request.artistBio(),
                 request.seatMapSvg(),
                 Instant.now());
-        invalidateConcert(concert.getId());
+        invalidateConcertAndListings(concert.getId());
         return ConcertDetailResponse.from(concert);
     }
 
@@ -146,8 +139,7 @@ public class ConcertService {
                 where concert_id = ?
                   and status = 'PAID'
         """, concertId);
-        invalidateConcert(concertId);
-        invalidateListing();
+        invalidateConcertAndListings(concertId);
         eventPublisher.publishEvent(new ConcertCancelledEvent(concertId));
     }
 
@@ -191,7 +183,7 @@ public class ConcertService {
                 request.perUserLimit());
         invalidateConcert(concertId);
         if (remainingChanged) {
-            concertCache.evict(availabilityKey(ticketTypeId));
+            concertCacheService.invalidateTicketAvailability(ticketTypeId);
         }
         return TicketTypeResponse.from(ticketType);
     }
@@ -242,8 +234,7 @@ public class ConcertService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Concert requires at least one ticket type");
         }
         concert.publish(Instant.now());
-        invalidateListing();
-        invalidateConcert(concertId);
+        invalidateConcertAndListings(concertId);
         return ConcertDetailResponse.from(concertRepository.findById(concertId).orElseThrow());
     }
 
@@ -264,11 +255,7 @@ public class ConcertService {
         if (concert.getStatus() != ConcertStatus.PUBLISHED && !isOwnedByCurrentUser(concert)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concert not found");
         }
-        ConcertDetailResponse response = ConcertDetailResponse.from(concert);
-        if (concert.getStatus() == ConcertStatus.PUBLISHED) {
-            concertCache.put(detailKey(concertId), response, DETAIL_TTL);
-        }
-        return response;
+        return ConcertDetailResponse.from(concert);
     }
 
     private Concert requireOwnedConcertEntity(UUID concertId) {
@@ -301,18 +288,12 @@ public class ConcertService {
     }
 
     private TicketAvailabilityResponse getTicketAvailability(TicketType ticketType) {
-        String key = availabilityKey(ticketType.getId());
-        return concertCache.get(key, TicketAvailabilityResponse.class)
-                .orElseGet(() -> {
-                    TicketAvailabilityResponse response = new TicketAvailabilityResponse(
-                            ticketType.getId(),
-                            ticketType.getName(),
-                            ticketType.getZone(),
-                            ticketType.getRemainingQuantity(),
-                            ticketType.getRemainingQuantity() == 0);
-                    concertCache.put(key, response, AVAILABILITY_TTL);
-                    return response;
-                });
+        return concertCacheService.getAvailability(ticketType.getId(), () -> new TicketAvailabilityResponse(
+                ticketType.getId(),
+                ticketType.getName(),
+                ticketType.getZone(),
+                ticketType.getRemainingQuantity(),
+                ticketType.getRemainingQuantity() == 0));
     }
 
     private ConcertStatsResponse.TicketTypeSales mapTicketTypeSales(ResultSet rs, int rowNum) throws SQLException {
@@ -333,18 +314,10 @@ public class ConcertService {
     }
 
     private void invalidateConcert(UUID concertId) {
-        concertCache.evict(detailKey(concertId));
+        concertCacheService.invalidateConcert(concertId);
     }
 
-    private void invalidateListing() {
-        concertCache.evictByPrefix("concerts:list:");
-    }
-
-    private String detailKey(UUID concertId) {
-        return "concerts:detail:" + concertId;
-    }
-
-    private String availabilityKey(UUID ticketTypeId) {
-        return "tickets:available:" + ticketTypeId;
+    private void invalidateConcertAndListings(UUID concertId) {
+        concertCacheService.invalidateConcertAndListings(concertId);
     }
 }

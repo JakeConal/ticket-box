@@ -131,11 +131,11 @@
 
 ## 11. Caching
 
-- [ ] 11.1 Implement `ConcertCacheService`: cache-aside for concert listing (key: `concerts:list:page:{n}`, TTL 5 min) and detail (key: `concerts:detail:{id}`, TTL 60s)
-- [ ] 11.2 Implement active cache invalidation: on create/update/cancel concert, delete `concerts:list:*` keys and `concerts:detail:{id}`
-- [ ] 11.3 Implement ticket availability cache: key `tickets:available:{ticketTypeId}`, TTL 10s; read-through on miss; delete after every committed `remaining_quantity` mutation, including reservation/order creation, release on FAILED/EXPIRED, and admin ticket quantity changes
-- [ ] 11.4 Ensure purchase endpoint never reads from cache: inventory enforcement always goes through the PostgreSQL conditional atomic decrement (D3); cached availability is display-only
-- [ ] 11.5 Write test: verify cache hit returns same data; verify cache is invalidated within TTL after concert update
+- [x] 11.1 Implement `ConcertCacheService`: cache-aside for concert listing (key: `concerts:list:page:{n}`, TTL 5 min) and detail (key: `concerts:detail:{id}`, TTL 60s)
+- [x] 11.2 Implement active cache invalidation: on create/update/cancel concert, delete `concerts:list:*` keys and `concerts:detail:{id}`
+- [x] 11.3 Implement ticket availability cache: key `tickets:available:{ticketTypeId}`, TTL 10s; read-through on miss; delete after every committed `remaining_quantity` mutation, including reservation/order creation, release on FAILED/EXPIRED, and admin ticket quantity changes
+- [x] 11.4 Ensure purchase endpoint never reads from cache: inventory enforcement always goes through the PostgreSQL conditional atomic decrement (D3); cached availability is display-only
+- [x] 11.5 Write test: verify cache hit returns same data; verify cache is invalidated within TTL after concert update
 
 ## 12. AI Artist Bio
 

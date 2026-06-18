@@ -180,6 +180,35 @@ class ConcertIntegrationTest {
         assertThat(invalidatedAvailability.get(0).get("soldOut").asBoolean()).isTrue();
     }
 
+    @Test
+    void concertDetailUsesCacheAndAdminUpdateInvalidatesIt() throws Exception {
+        String organizerToken = organizerToken("detail-cache-owner@ticketbox.vn");
+        UUID concertId = createDraftConcert(organizerToken, "Detail Cache Concert", "CACHE-DETAIL-1");
+        createTicketType(organizerToken, concertId, 5);
+        assertThat(postJson("/api/admin/concerts/" + concertId + "/publish", organizerToken, Map.of()).status())
+                .isEqualTo(HttpStatus.OK.value());
+
+        JsonNode firstDetail = getJson("/api/concerts/" + concertId, null).json();
+        assertThat(firstDetail.get("name").asText()).isEqualTo("Detail Cache Concert");
+
+        jdbcTemplate.update("update concerts set name = ? where id = ?", "Database Only Name", concertId);
+        JsonNode cachedDetail = getJson("/api/concerts/" + concertId, null).json();
+        assertThat(cachedDetail.get("name").asText()).isEqualTo("Detail Cache Concert");
+
+        assertThat(putJson("/api/admin/concerts/" + concertId, organizerToken, Map.of(
+                "name", "Updated Detail Cache Concert",
+                "description", "Updated concert description",
+                "venue", "HCMC Arena",
+                "eventDate", futureEventDate(),
+                "eventCode", "CACHE-DETAIL-1",
+                "artistBio", "Updated artist bio",
+                "seatMapSvg", "<svg><rect id='VIP'/></svg>")).status())
+                .isEqualTo(HttpStatus.OK.value());
+
+        JsonNode invalidatedDetail = getJson("/api/concerts/" + concertId, null).json();
+        assertThat(invalidatedDetail.get("name").asText()).isEqualTo("Updated Detail Cache Concert");
+    }
+
     private UUID createDraftConcert(String organizerToken, String name, String eventCode) throws Exception {
         TestResponse response = postJson("/api/admin/concerts", organizerToken, Map.of(
                 "name", name,

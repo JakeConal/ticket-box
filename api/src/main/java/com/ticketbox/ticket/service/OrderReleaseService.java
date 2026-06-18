@@ -1,6 +1,6 @@
 package com.ticketbox.ticket.service;
 
-import com.ticketbox.concert.cache.ConcertCache;
+import com.ticketbox.concert.cache.ConcertCacheService;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
@@ -21,15 +21,15 @@ public class OrderReleaseService {
 
     private final JdbcTemplate jdbcTemplate;
     private final PurchaseLimitCounter purchaseLimitCounter;
-    private final ConcertCache concertCache;
+    private final ConcertCacheService concertCacheService;
 
     public OrderReleaseService(
             JdbcTemplate jdbcTemplate,
             PurchaseLimitCounter purchaseLimitCounter,
-            ConcertCache concertCache) {
+            ConcertCacheService concertCacheService) {
         this.jdbcTemplate = jdbcTemplate;
         this.purchaseLimitCounter = purchaseLimitCounter;
-        this.concertCache = concertCache;
+        this.concertCacheService = concertCacheService;
     }
 
     @Transactional
@@ -65,7 +65,7 @@ public class OrderReleaseService {
                     set remaining_quantity = remaining_quantity + ?
                     where id = ?
                     """, item.quantity(), item.ticketTypeId());
-            concertCache.evict("tickets:available:" + item.ticketTypeId());
+            concertCacheService.invalidateTicketAvailability(item.ticketTypeId());
             purchaseLimitCounter.release(order.userId(), order.concertId(), item.ticketTypeId(), item.quantity());
         }
         return true;

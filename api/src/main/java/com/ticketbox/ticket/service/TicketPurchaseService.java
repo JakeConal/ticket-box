@@ -3,7 +3,7 @@ package com.ticketbox.ticket.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketbox.auth.security.UserPrincipal;
 import com.ticketbox.auth.service.AuthenticatedUserService;
-import com.ticketbox.concert.cache.ConcertCache;
+import com.ticketbox.concert.cache.ConcertCacheService;
 import com.ticketbox.payment.gateway.PaymentGatewayManager;
 import com.ticketbox.payment.gateway.PaymentGatewayRequest;
 import com.ticketbox.ticket.dto.PurchaseRequest;
@@ -38,7 +38,7 @@ public class TicketPurchaseService {
     private final PurchaseLimitCounter purchaseLimitCounter;
     private final PurchaseLockRegistry purchaseLockRegistry;
     private final QueueAdmissionService queueAdmissionService;
-    private final ConcertCache concertCache;
+    private final ConcertCacheService concertCacheService;
     private final PaymentGatewayManager paymentGatewayManager;
     private final OrderReleaseService orderReleaseService;
     private final TransactionTemplate transactionTemplate;
@@ -51,7 +51,7 @@ public class TicketPurchaseService {
             PurchaseLimitCounter purchaseLimitCounter,
             PurchaseLockRegistry purchaseLockRegistry,
             QueueAdmissionService queueAdmissionService,
-            ConcertCache concertCache,
+            ConcertCacheService concertCacheService,
             PaymentGatewayManager paymentGatewayManager,
             OrderReleaseService orderReleaseService,
             TransactionTemplate transactionTemplate) {
@@ -62,7 +62,7 @@ public class TicketPurchaseService {
         this.purchaseLimitCounter = purchaseLimitCounter;
         this.purchaseLockRegistry = purchaseLockRegistry;
         this.queueAdmissionService = queueAdmissionService;
-        this.concertCache = concertCache;
+        this.concertCacheService = concertCacheService;
         this.paymentGatewayManager = paymentGatewayManager;
         this.orderReleaseService = orderReleaseService;
         this.transactionTemplate = transactionTemplate;
@@ -152,7 +152,7 @@ public class TicketPurchaseService {
             if (updated == 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Tickets sold out");
             }
-            concertCache.evict("tickets:available:" + ticketType.id());
+            concertCacheService.invalidateTicketAvailability(ticketType.id());
 
             UUID orderId = UUID.randomUUID();
             Instant now = Instant.now();
