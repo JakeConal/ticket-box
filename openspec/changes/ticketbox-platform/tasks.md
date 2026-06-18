@@ -170,15 +170,15 @@
 
 ## 14. Admin Web Dashboard (Frontend)
 
-- [ ] 14.1 Implement admin login page: call auth API, store JWT in httpOnly cookie or memory, redirect to dashboard
-- [ ] 14.2 Implement concert list page (ORGANIZER): table of concerts with status badges (DRAFT/PUBLISHED/CANCELLED), create/edit/publish/cancel actions
-- [ ] 14.3 Implement concert create/edit form: fields for name, date, venue, description, SVG seat map upload, ticket types configuration
-- [ ] 14.4 Implement ticket type configuration widget: add/remove rows for zone, price, quantity, sale open time, per-user limit
-- [ ] 14.5 Implement PDF upload for AI bio: drag-and-drop or file picker; poll `bio_status`; when DRAFT, show review UI to edit the text and publish or reject (the bio is never auto-published)
-- [ ] 14.6 Implement concert stats page: revenue chart, tickets sold per zone, check-in count
-- [ ] 14.7 Implement route guards: redirect non-ORGANIZER users away from `/admin/**`
-- [ ] 14.8 Implement check-in conflicts page (ORGANIZER): table of `checkin_conflicts` for a given concert showing ticket ID, attempting checker, gate/lane, zone, device ID, attempted timestamp, time delta from winning check-in — enables post-event fraud investigation
-- [ ] 14.9 Implement refunds page (ORGANIZER): table of REFUND_REQUIRED orders for their concerts (order ID, buyer, amount, gateway ref, why it requires refund); "Mark as refunded" action calling `POST /api/admin/orders/{id}/mark-refunded` after the manual gateway refund is done
+- [x] 14.1 Implement admin login page: call auth API, store JWT in httpOnly cookie or memory, redirect to dashboard
+- [x] 14.2 Implement concert list page (ORGANIZER): table of concerts with status badges (DRAFT/PUBLISHED/CANCELLED), create/edit/publish/cancel actions
+- [x] 14.3 Implement concert create/edit form: fields for name, date, venue, description, SVG seat map upload, ticket types configuration
+- [x] 14.4 Implement ticket type configuration widget: add/remove rows for zone, price, quantity, sale open time, per-user limit
+- [x] 14.5 Implement PDF upload for AI bio: drag-and-drop or file picker; poll `bio_status`; when DRAFT, show review UI to edit the text and publish or reject (the bio is never auto-published)
+- [x] 14.6 Implement concert stats page: revenue chart, tickets sold per zone, check-in count
+- [x] 14.7 Implement route guards: redirect non-ORGANIZER users away from `/admin/**`
+- [x] 14.8 Implement check-in conflicts page (ORGANIZER): table of `checkin_conflicts` for a given concert showing ticket ID, attempting checker, gate/lane, zone, device ID, attempted timestamp, time delta from winning check-in — enables post-event fraud investigation
+- [x] 14.9 Implement refunds page (ORGANIZER): table of REFUND_REQUIRED orders for their concerts (order ID, buyer, amount, gateway ref, why it requires refund); "Mark as refunded" action calling `POST /api/admin/orders/{id}/mark-refunded` after the manual gateway refund is done
 
 ## 15. Public Web Frontend (Next.js)
 

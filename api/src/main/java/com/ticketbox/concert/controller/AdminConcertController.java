@@ -3,10 +3,12 @@ package com.ticketbox.concert.controller;
 import com.ticketbox.concert.dto.ConcertDetailResponse;
 import com.ticketbox.concert.dto.ConcertRequest;
 import com.ticketbox.concert.dto.ConcertStatsResponse;
+import com.ticketbox.concert.dto.ConcertSummaryResponse;
 import com.ticketbox.concert.dto.TicketTypeRequest;
 import com.ticketbox.concert.dto.TicketTypeResponse;
 import com.ticketbox.concert.service.ConcertService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,6 +29,11 @@ public class AdminConcertController {
 
     public AdminConcertController(ConcertService concertService) {
         this.concertService = concertService;
+    }
+
+    @GetMapping
+    List<ConcertSummaryResponse> listOwned() {
+        return concertService.listOwned();
     }
 
     @PostMapping

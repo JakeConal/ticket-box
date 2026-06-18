@@ -80,6 +80,15 @@ public class ConcertService {
     }
 
     @Transactional(readOnly = true)
+    public List<ConcertSummaryResponse> listOwned() {
+        UserPrincipal organizer = authenticatedUserService.requireCurrentUser();
+        return concertRepository.findByCreatedByOrderByEventDateAsc(organizer.id())
+                .stream()
+                .map(ConcertSummaryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public ConcertDetailResponse getPublicDetail(UUID concertId) {
         return concertCacheService.getDetail(
                 concertId,

@@ -3,6 +3,7 @@ package com.ticketbox.concert.repository;
 import com.ticketbox.concert.model.Concert;
 import com.ticketbox.concert.model.ConcertStatus;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -15,6 +16,8 @@ import org.springframework.data.jpa.repository.Query;
 public interface ConcertRepository extends JpaRepository<Concert, UUID> {
 
     Page<Concert> findByStatusOrderByEventDateAsc(ConcertStatus status, Pageable pageable);
+
+    List<Concert> findByCreatedByOrderByEventDateAsc(UUID createdBy);
 
     @Override
     @EntityGraph(attributePaths = "ticketTypes")
