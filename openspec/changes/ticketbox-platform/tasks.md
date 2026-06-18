@@ -192,12 +192,12 @@
 
 ## 16. Seed Data
 
-- [ ] 16.1 Create SQL seed script: 4 sample concerts — `Anh Trai Say Hi`, `Anh Trai Vượt Ngàn Chông Gai`, `Em Xinh Say Hi`, `Chị Đẹp Đạp Gió Rẽ Sóng` — each with status PUBLISHED (visible out of the box) and a human-readable `event_code` (e.g. `ATSH-HCM-2026`) matching the sample VIP CSV
-- [ ] 16.2 Add ticket types for each concert: GA (500k VND, 5000 qty, limit 4), CAT2 (800k, 2000 qty, limit 4), CAT1 (1.2M, 1000 qty, limit 4), VIP (2M, 500 qty, limit 2), SVIP (3.5M, 200 qty, limit 2)
-- [ ] 16.3 Add sample SVG seat map for each concert (zone-colored SVG with GA, SVIP, VIP, CAT1, CAT2 regions)
-- [ ] 16.4 Add seed users: 1 ORGANIZER (`organizer@ticketbox.vn`), 2 CHECKERs (`checker1@ticketbox.vn`, `checker2@ticketbox.vn`), 3 AUDIENCE users
-- [ ] 16.5 Add sample VIP guest CSV file in `import-samples/` for testing the nightly import flow
-- [ ] 16.6 Seed each concert with a pre-written `artist_bio` and `bio_status = PUBLISHED` so concert pages show a bio out of the box — a live free-tier (Gemini) quota wall on demo day must not leave every page on the "coming soon" placeholder; the upload→draft→publish flow is still exercised separately on demand
+- [x] 16.1 Create SQL seed script: 4 sample concerts — `Anh Trai Say Hi`, `Anh Trai Vượt Ngàn Chông Gai`, `Em Xinh Say Hi`, `Chị Đẹp Đạp Gió Rẽ Sóng` — each with status PUBLISHED (visible out of the box) and a human-readable `event_code` (e.g. `ATSH-HCM-2026`) matching the sample VIP CSV
+- [x] 16.2 Add ticket types for each concert: GA (500k VND, 5000 qty, limit 4), CAT2 (800k, 2000 qty, limit 4), CAT1 (1.2M, 1000 qty, limit 4), VIP (2M, 500 qty, limit 2), SVIP (3.5M, 200 qty, limit 2)
+- [x] 16.3 Add sample SVG seat map for each concert (zone-colored SVG with GA, SVIP, VIP, CAT1, CAT2 regions)
+- [x] 16.4 Add seed users: 1 ORGANIZER (`organizer@ticketbox.vn`), 2 CHECKERs (`checker1@ticketbox.vn`, `checker2@ticketbox.vn`), 3 AUDIENCE users
+- [x] 16.5 Add sample VIP guest CSV file in `import-samples/` for testing the nightly import flow
+- [x] 16.6 Seed each concert with a pre-written `artist_bio` and `bio_status = PUBLISHED` so concert pages show a bio out of the box — a live free-tier (Gemini) quota wall on demo day must not leave every page on the "coming soon" placeholder; the upload→draft→publish flow is still exercised separately on demand
 
 ## 17. Sale-Open Waiting Queue (D16)
 
