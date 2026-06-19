@@ -7,6 +7,7 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import java.io.ByteArrayOutputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -121,7 +122,7 @@ public class NotificationEventFactory {
                             Map.of(
                                     "concertName", order.concertName(),
                                     "eventDate", order.eventDate().toString()));
-                }, windowStart, windowEnd);
+                }, Timestamp.from(windowStart), Timestamp.from(windowEnd));
     }
 
     private OrderRecipient findOrderRecipient(UUID orderId) {

@@ -17,6 +17,7 @@ import com.ticketbox.ticket.service.OrderReleaseService;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -128,7 +129,7 @@ public class PaymentOrderService {
                     REFUND_REQUIRED,
                     paymentRef,
                     "Payment succeeded after reservation expiry",
-                    Instant.now(),
+                    Timestamp.from(Instant.now()),
                     orderId);
             return;
         }
@@ -139,7 +140,7 @@ public class PaymentOrderService {
                         payment_ref = ?,
                         paid_at = ?
                     where id = ?
-                    """, PAID, paymentRef, Instant.now(), orderId);
+                    """, PAID, paymentRef, Timestamp.from(Instant.now()), orderId);
             ticketIssuanceService.issueTicketsForPaidOrder(orderId);
             notificationOutboxService.enqueuePurchaseConfirmation(orderId);
             notificationService.sendInApp(notificationEventFactory.inAppPurchaseConfirmation(orderId));
@@ -199,7 +200,7 @@ public class PaymentOrderService {
                     refunded_by = ?
                 where id = ?
                   and status = ?
-                """, REFUNDED, Instant.now(), organizer.id(), orderId, REFUND_REQUIRED);
+                """, REFUNDED, Timestamp.from(Instant.now()), organizer.id(), orderId, REFUND_REQUIRED);
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Order is not awaiting refund");
         }

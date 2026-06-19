@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,7 @@ public class QueueAdmissionService {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
+    private final AtomicLong scoreSequence = new AtomicLong();
 
     public QueueAdmissionService(
             QueueStore queueStore,
@@ -60,7 +62,7 @@ public class QueueAdmissionService {
             }
             String queueKey = queueKey(concertId);
             if (queueStore.score(queueKey, userId).isEmpty()) {
-                queueStore.add(queueKey, userId, clock.millis());
+                queueStore.add(queueKey, userId, enqueueScore());
             }
             queueStore.expire(queueKey, properties.getQueueTtl());
             return waitingStatus(concertId, user);
@@ -102,7 +104,8 @@ public class QueueAdmissionService {
             }
             Claims claims = authJwtUtil.parseAdmissionToken(admissionToken);
             if (!user.id().toString().equals(claims.getSubject())
-                    || !concertId.toString().equals(claims.get("concertId", String.class))) {
+                    || !concertId.toString().equals(claims.get("concertId", String.class))
+                    || tokenExpired(claims)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Waiting queue admission token is invalid");
             }
         } catch (ResponseStatusException ex) {
@@ -175,6 +178,9 @@ public class QueueAdmissionService {
         }
         try {
             Claims claims = authJwtUtil.parseAdmissionToken(token.get());
+            if (tokenExpired(claims)) {
+                return Optional.empty();
+            }
             return Optional.of(new QueueStatusResponse(
                     concertId,
                     true,
@@ -222,6 +228,10 @@ public class QueueAdmissionService {
         return count != null && count > 0;
     }
 
+    private double enqueueScore() {
+        return clock.millis() + ((scoreSequence.getAndIncrement() % 1_000L) / 1_000.0);
+    }
+
     private List<UUID> activeConcertIds() {
         Instant now = clock.instant();
         return jdbcTemplate.queryForList("""
@@ -246,6 +256,10 @@ public class QueueAdmissionService {
     private boolean isJwtFailure(RuntimeException ex) {
         return ex.getClass().getName().startsWith("io.jsonwebtoken.")
                 || ex instanceof IllegalArgumentException;
+    }
+
+    private boolean tokenExpired(Claims claims) {
+        return claims.getExpiration() == null || !claims.getExpiration().toInstant().isAfter(clock.instant());
     }
 
     private String queueKey(UUID concertId) {

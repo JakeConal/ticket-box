@@ -18,7 +18,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /workspace/ticketbox-web/.next/standalone ./
-COPY --from=build /workspace/ticketbox-web/.next/static ./.next/static
-COPY --from=build /workspace/ticketbox-web/public ./public
+COPY --from=build /workspace/ticketbox-web/.next/static ./ticketbox-web/.next/static
+COPY --from=build /workspace/ticketbox-web/public ./ticketbox-web/public
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "ticketbox-web/server.js"]

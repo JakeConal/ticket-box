@@ -11,6 +11,7 @@ import com.ticketbox.ticket.dto.PurchaseResponse;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -174,7 +175,7 @@ public class TicketPurchaseService {
                     PENDING,
                     idempotencyKey,
                     request.paymentProvider().name(),
-                    now);
+                    Timestamp.from(now));
             jdbcTemplate.update("""
                     insert into order_items (id, order_id, ticket_type_id, quantity)
                     values (?, ?, ?, ?)
@@ -240,7 +241,7 @@ public class TicketPurchaseService {
             jdbcTemplate.update(
                     "insert into idempotency_keys (\"key\", created_at) values (?, ?)",
                     idempotencyKey,
-                    Instant.now());
+                    Timestamp.from(Instant.now()));
             return Optional.empty();
         } catch (DuplicateKeyException ex) {
             return Optional.of(findStoredResult(idempotencyKey)

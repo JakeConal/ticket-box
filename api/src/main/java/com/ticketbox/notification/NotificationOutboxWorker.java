@@ -3,6 +3,7 @@ package com.ticketbox.notification;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -61,7 +62,7 @@ public class NotificationOutboxWorker {
                         set status = 'SENT',
                             sent_at = ?
                         where id = ?
-                        """, Instant.now(), row.id());
+                        """, Timestamp.from(Instant.now()), row.id());
                 delivered++;
             } catch (Exception ex) {
                 jdbcTemplate.update("""

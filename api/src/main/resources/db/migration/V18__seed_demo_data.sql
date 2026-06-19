@@ -3,21 +3,21 @@ VALUES
     (
         '10000000-0000-0000-0000-000000000004',
         'audience1@ticketbox.vn',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+        crypt('password', gen_salt('bf', 10)),
         'AUDIENCE',
         now()
     ),
     (
         '10000000-0000-0000-0000-000000000005',
         'audience2@ticketbox.vn',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+        crypt('password', gen_salt('bf', 10)),
         'AUDIENCE',
         now()
     ),
     (
         '10000000-0000-0000-0000-000000000006',
         'audience3@ticketbox.vn',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+        crypt('password', gen_salt('bf', 10)),
         'AUDIENCE',
         now()
     )

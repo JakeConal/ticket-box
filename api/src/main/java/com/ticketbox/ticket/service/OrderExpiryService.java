@@ -1,6 +1,7 @@
 package com.ticketbox.ticket.service;
 
 import com.ticketbox.payment.service.PaymentOrderService;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -55,9 +56,9 @@ public class OrderExpiryService {
                         rs.getObject("id", UUID.class),
                         rs.getString("status")),
                 PENDING,
-                now.minus(PENDING_TTL),
+                Timestamp.from(now.minus(PENDING_TTL)),
                 PENDING_CONFIRMATION,
-                now.minus(PENDING_CONFIRMATION_TTL),
+                Timestamp.from(now.minus(PENDING_CONFIRMATION_TTL)),
                 BATCH_SIZE);
 
         int expired = 0;
