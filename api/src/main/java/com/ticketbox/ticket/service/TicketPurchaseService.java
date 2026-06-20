@@ -282,7 +282,7 @@ public class TicketPurchaseService {
         try {
             String result = objectMapper.writeValueAsString(response);
             jdbcTemplate.update(
-                    "update idempotency_keys set order_id = ?, result = ? where \"key\" = ?",
+                    "update idempotency_keys set order_id = ?, result = cast(? as jsonb) where \"key\" = ?",
                     orderId,
                     result,
                     idempotencyKey);
