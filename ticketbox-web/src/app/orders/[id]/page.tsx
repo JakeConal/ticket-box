@@ -12,6 +12,7 @@ import {
   shortId
 } from "../../../lib/audience-api";
 import { TicketCard } from "../../../components/ticket-card";
+import { ui } from "../../../components/ui";
 
 export default function OrderPage() {
   const params = useParams<{ id: string }>();
@@ -50,38 +51,39 @@ export default function OrderPage() {
   }, [orderId]);
 
   return (
-    <main className="audience-shell">
-      <nav className="audience-nav" aria-label="Audience navigation">
-        <Link className="brand-link" href="/">TicketBox</Link>
-        <div className="nav-actions">
-          <Link className="ghost-button compact-button" href="/me/tickets">My tickets</Link>
+    <main className={ui.page}>
+      <nav className={ui.nav} aria-label="Audience navigation">
+        <Link className={ui.brand} href="/">TicketBox</Link>
+        <div className={ui.navActions}>
+          <Link className={`${ui.ghostButton} ${ui.compactButton}`} href="/me/tickets">My tickets</Link>
         </div>
       </nav>
 
-      {error ? <p className="toast error" role="alert">{error}</p> : null}
+      {error ? <p className={ui.alertError} role="alert">{error}</p> : null}
 
-      <section className="order-header">
-        <div>
-          <p className="eyebrow">Order {shortId(orderId)}</p>
-          <h1>{order?.status === "PAID" ? "Your e-tickets are ready" : "Confirming your payment"}</h1>
-          <p className="muted">
+      <section className="flex flex-wrap items-end justify-between gap-6 border-b border-neutral-950 pb-8">
+        <div className="max-w-2xl">
+          <p className={ui.eyebrow}>Order {shortId(orderId)}</p>
+          <h1 className="mt-3 text-4xl font-black">{order?.status === "PAID" ? "Your e-tickets are ready" : "Confirming your payment"}</h1>
+          <p className={`${ui.muted} mt-4`}>
             Status: <strong>{order?.status || "Loading"}</strong>
             {order?.createdAt ? ` / Created ${formatDate(order.createdAt)}` : ""}
           </p>
+          <p className={`${ui.muted} mt-2`}>Keep this page open after checkout. Paid orders load QR tickets automatically.</p>
         </div>
-        <Link className="secondary-button" href="/me/tickets">Open ticket wallet</Link>
+        <Link className={ui.secondaryButton} href="/me/tickets">Open ticket wallet</Link>
       </section>
 
       {order && order.status !== "PAID" ? (
-        <section className="panel">
-          <h2>Payment status</h2>
-          <p className="muted">
+        <section className={`${ui.panel} mt-8`}>
+          <h2 className="text-xl font-bold">Payment status</h2>
+          <p className={`${ui.muted} mt-3`}>
             This page polls the order endpoint. QR tickets appear automatically once the payment gateway marks the order PAID.
           </p>
         </section>
       ) : null}
 
-      <section className="ticket-grid">
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {tickets.map((ticket) => (
           <TicketCard key={ticket.id} ticket={ticket} />
         ))}

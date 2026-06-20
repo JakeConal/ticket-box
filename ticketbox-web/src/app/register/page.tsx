@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { registerAudience } from "../../lib/audience-api";
+import { ui } from "../../components/ui";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -27,14 +28,14 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="auth-shell">
-      <section className="login-panel" aria-labelledby="register-title">
+    <main className={ui.authPage}>
+      <section className="w-full max-w-md border border-neutral-950 bg-white p-6 sm:p-8" aria-labelledby="register-title">
         <div>
-          <p className="eyebrow">TicketBox</p>
-          <h1 id="register-title">Create an audience account</h1>
-          <p className="muted">New public registrations are created with audience permissions.</p>
+          <p className={ui.eyebrow}>TicketBox</p>
+          <h1 className="mt-3 text-3xl font-black" id="register-title">Create an audience account</h1>
+          <p className={`${ui.muted} mt-3`}>New public registrations are created with audience permissions.</p>
         </div>
-        <form className="form-grid" onSubmit={submit}>
+        <form className={`${ui.form} mt-8`} onSubmit={submit}>
           <label>
             Email
             <input autoComplete="email" inputMode="email" required type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
@@ -43,12 +44,12 @@ export default function RegisterPage() {
             Password
             <input autoComplete="new-password" minLength={8} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <button className="primary-button" disabled={submitting} type="submit">
+          {error ? <p className={ui.alertError} role="alert">{error}</p> : null}
+          <button className={ui.primaryButton} disabled={submitting} type="submit">
             {submitting ? "Creating account..." : "Create account"}
           </button>
         </form>
-        <Link className="ghost-button" href="/login">I already have an account</Link>
+        <Link className={`${ui.ghostButton} mt-3`} href="/login">I already have an account</Link>
       </section>
     </main>
   );

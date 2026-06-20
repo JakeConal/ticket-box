@@ -1,6 +1,7 @@
-import { NextRequest } from "next/server";
-import { currentSession } from "../../../lib/audience-server";
+import { NextRequest, NextResponse } from "next/server";
+import { sessionFromRequest } from "../../../lib/audience-server";
 
 export async function GET(request: NextRequest) {
-  return currentSession(request);
+  const session = sessionFromRequest(request);
+  return session ? NextResponse.json(session) : new NextResponse(null, { status: 204 });
 }

@@ -3,11 +3,12 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginOrganizer } from "../../../lib/admin-api";
+import { ui } from "../../../components/ui";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("organizer@ticketbox.vn");
-  const [password, setPassword] = useState("password123");
+  const [password, setPassword] = useState("password");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,17 +27,17 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="admin-login-shell">
-      <section className="login-panel" aria-labelledby="admin-login-title">
+    <main className={ui.authPage}>
+      <section className="w-full max-w-md border border-neutral-950 bg-white p-6 sm:p-8" aria-labelledby="admin-login-title">
         <div>
-          <p className="eyebrow">TicketBox Admin</p>
-          <h1 id="admin-login-title">Organizer sign in</h1>
-          <p className="muted">
+          <p className={ui.eyebrow}>TicketBox Admin</p>
+          <h1 className="mt-3 text-3xl font-black" id="admin-login-title">Organizer sign in</h1>
+          <p className={`${ui.muted} mt-3`}>
             Manage concerts, inventory, check-in audits, bios, and refund queues from one workspace.
           </p>
         </div>
 
-        <form className="form-grid" onSubmit={submit}>
+        <form className={`${ui.form} mt-8`} onSubmit={submit}>
           <label>
             Email
             <input
@@ -59,11 +60,11 @@ export default function AdminLoginPage() {
             />
           </label>
           {error ? (
-            <p className="form-error" role="alert">
+            <p className={ui.alertError} role="alert">
               {error}
             </p>
           ) : null}
-          <button className="primary-button" disabled={submitting} type="submit">
+          <button className={ui.primaryButton} disabled={submitting} type="submit">
             {submitting ? "Signing in..." : "Sign in"}
           </button>
         </form>

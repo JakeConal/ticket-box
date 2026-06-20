@@ -11,6 +11,7 @@ import {
   readOrderHistory,
   shortId
 } from "../../../lib/audience-api";
+import { ui } from "../../../components/ui";
 
 type TicketGroup = {
   order: OrderStatus;
@@ -59,41 +60,45 @@ export default function MyTicketsPage() {
   }, []);
 
   return (
-    <main className="audience-shell">
-      <nav className="audience-nav" aria-label="Audience navigation">
-        <Link className="brand-link" href="/">TicketBox</Link>
-        <Link className="ghost-button compact-button" href="/">Browse concerts</Link>
+    <main className={ui.page}>
+      <nav className={ui.nav} aria-label="Audience navigation">
+        <Link className={ui.brand} href="/">TicketBox</Link>
+        <Link className={`${ui.ghostButton} ${ui.compactButton}`} href="/">Browse concerts</Link>
       </nav>
 
-      <section className="order-header">
+      <section className="max-w-2xl border-b border-neutral-950 pb-8">
         <div>
-          <p className="eyebrow">Ticket wallet</p>
-          <h1>My tickets</h1>
-          <p className="muted">Orders started from this browser are collected here and verified against the owned-order API.</p>
+          <p className={ui.eyebrow}>Ticket wallet</p>
+          <h1 className="mt-3 text-4xl font-black">My tickets</h1>
+          <p className={`${ui.muted} mt-4`}>Orders started from this browser are collected here and verified against the owned-order API.</p>
+          <p className={`${ui.muted} mt-2`}>Download QR codes before arriving so gate checks stay fast.</p>
         </div>
       </section>
 
-      {error ? <p className="toast error" role="alert">{error}</p> : null}
-      {loading ? <p className="muted">Loading tickets...</p> : null}
+      {error ? <p className={`${ui.alertError} mt-6`} role="alert">{error}</p> : null}
+      {loading ? <p className={`${ui.muted} mt-6`}>Loading tickets...</p> : null}
 
-      <section className="ticket-wallet">
+      <section className="mt-8 grid gap-6">
         {groups.map((group) => (
-          <div className="panel" key={group.order.orderId}>
-            <h2>Order {shortId(group.order.orderId)} / {group.order.status}</h2>
+          <div className={ui.panel} key={group.order.orderId}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-300 pb-4">
+              <h2 className="text-xl font-bold">Order {shortId(group.order.orderId)}</h2>
+              <span className={ui.statusBadge}>{group.order.status}</span>
+            </div>
             {group.tickets.length > 0 ? (
-              <div className="ticket-grid">
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {group.tickets.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} />)}
               </div>
             ) : (
-              <p className="muted">Tickets will appear after payment is confirmed.</p>
+              <p className={`${ui.muted} mt-4`}>Tickets will appear after payment is confirmed.</p>
             )}
           </div>
         ))}
         {!loading && groups.length === 0 ? (
-          <section className="panel">
-            <h2>No saved orders</h2>
-            <p className="muted">After checkout starts, the order will be added here automatically.</p>
-            <Link className="primary-button" href="/">Browse concerts</Link>
+          <section className={ui.emptyState}>
+            <h2 className="text-xl font-bold text-neutral-950">No saved orders</h2>
+            <p className={`${ui.muted} mt-2`}>After checkout starts, the order will be added here automatically.</p>
+            <Link className={`${ui.primaryButton} mt-5`} href="/">Browse concerts</Link>
           </section>
         ) : null}
       </section>

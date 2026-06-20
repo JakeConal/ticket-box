@@ -18,6 +18,7 @@ import {
   getSession,
   purchaseTickets
 } from "../../../lib/audience-api";
+import { ui } from "../../../components/ui";
 
 export default function ConcertDetailPage() {
   const params = useParams<{ id: string }>();
@@ -159,68 +160,83 @@ export default function ConcertDetailPage() {
 
   if (!concert) {
     return (
-      <main className="audience-shell">
-        <p className="muted">Loading concert...</p>
+      <main className={ui.page}>
+        <p className={ui.muted}>Loading concert...</p>
       </main>
     );
   }
 
   return (
-    <main className="audience-shell">
-      <nav className="audience-nav" aria-label="Audience navigation">
-        <Link className="brand-link" href="/">TicketBox</Link>
-        <div className="nav-actions">
-          <Link className="ghost-button compact-button" href="/me/tickets">My tickets</Link>
-          {session ? <span className="session-email">{session.email}</span> : <Link className="primary-button compact-button" href="/login">Login</Link>}
+    <main className={ui.page}>
+      <nav className={ui.nav} aria-label="Audience navigation">
+        <Link className={ui.brand} href="/">TicketBox</Link>
+        <div className={ui.navActions}>
+          <Link className={`${ui.ghostButton} ${ui.compactButton}`} href="/me/tickets">My tickets</Link>
+          {session ? <span className="hidden max-w-48 truncate text-sm text-neutral-600 sm:inline">{session.email}</span> : <Link className={`${ui.primaryButton} ${ui.compactButton}`} href="/login">Login</Link>}
         </div>
       </nav>
 
-      {error ? <p className="toast error" role="alert">{error}</p> : null}
+      {error ? <p className={ui.alertError} role="alert">{error}</p> : null}
 
-      <section className="detail-hero">
-        <div>
-          <p className="eyebrow">{concert.eventCode}</p>
-          <h1>{concert.name}</h1>
-          <p className="muted">{formatDate(concert.eventDate)} / {concert.venue}</p>
+      <section className="grid gap-6 border-b border-neutral-950 pb-8 lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-end">
+        <div className="max-w-3xl">
+          <p className={ui.eyebrow}>{concert.eventCode}</p>
+          <h1 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">{concert.name}</h1>
+          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-neutral-700">
+            <span>{formatDate(concert.eventDate)}</span>
+            <span>{concert.venue}</span>
+          </div>
+          <p className={`${ui.muted} mt-4 max-w-2xl`}>Choose a zone, join the waiting room if demand spikes, then continue to a supported payment provider.</p>
         </div>
-        <div className="hero-stat">
-          <strong>{availability.reduce((sum, item) => sum + item.remainingQuantity, 0)}</strong>
-          <span>tickets visible now</span>
+        <div className="border border-neutral-950 p-5">
+          <strong className="block text-4xl font-black">{availability.reduce((sum, item) => sum + item.remainingQuantity, 0)}</strong>
+          <span className="mt-2 block text-xs font-semibold uppercase tracking-[0.1em] text-neutral-600">tickets visible now</span>
         </div>
       </section>
 
-      <section className="detail-grid">
-        <article className="panel map-panel">
-          <h2>Seat map</h2>
-          <div className="seat-map" dangerouslySetInnerHTML={{ __html: concert.seatMapSvg || "" }} />
-          <div className="zone-selector">
+      <section className="mt-8 grid gap-6 lg:grid-cols-2">
+        <article className={`${ui.panel} lg:col-span-2`}>
+          <h2 className="text-2xl font-bold">Seat map</h2>
+          <div className="mt-5 overflow-hidden border border-neutral-300 bg-white grayscale [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: concert.seatMapSvg || "" }} />
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
             {concert.ticketTypes.map((ticket) => {
               const live = availabilityByTicket.get(ticket.id);
               const isSoldOut = live?.soldOut ?? ticket.remainingQuantity <= 0;
               return (
                 <button
-                  className={ticket.id === selectedTicketId ? "zone-choice selected" : "zone-choice"}
+                  className={ticket.id === selectedTicketId ? "flex min-h-20 flex-col justify-center border border-neutral-950 bg-neutral-950 px-4 py-3 text-left text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-20 flex-col justify-center border border-neutral-400 bg-white px-4 py-3 text-left text-neutral-950 transition-colors hover:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"}
                   disabled={isSoldOut}
                   key={ticket.id}
                   type="button"
                   onClick={() => setSelectedTicketId(ticket.id)}
                 >
-                  <strong>{ticket.zone}</strong>
-                  <span>{ticket.name} / {isSoldOut ? "Sold out" : `${live?.remainingQuantity ?? ticket.remainingQuantity} left`}</span>
+                  <strong className="text-sm">{ticket.zone}</strong>
+                  <span className="mt-1 text-sm opacity-75">{ticket.name} / {isSoldOut ? "Sold out" : `${live?.remainingQuantity ?? ticket.remainingQuantity} left`}</span>
                 </button>
               );
             })}
           </div>
         </article>
 
-        <aside className="panel checkout-panel">
-          <h2>Buy tickets</h2>
+        <aside className={ui.panel}>
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-neutral-300 pb-4">
+            <div>
+              <p className={ui.eyebrow}>Checkout</p>
+              <h2 className="mt-2 text-2xl font-bold">Buy tickets</h2>
+            </div>
+            <span className="border border-neutral-500 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-700">Secure flow</span>
+          </div>
           {selectedTicket ? (
-            <form className="form-grid" onSubmit={submitPurchase}>
-              <div className="ticket-summary">
-                <span>{selectedTicket.name}</span>
-                <strong>{formatMoney(selectedTicket.price)}</strong>
-                <small>{remaining} left / limit {selectedTicket.perUserLimit}</small>
+            <form className={`${ui.form} mt-5`} onSubmit={submitPurchase}>
+              <div className="border border-neutral-300 p-4">
+                <span className="block text-sm text-neutral-600">{selectedTicket.name}</span>
+                <strong className="mt-2 block text-2xl font-black">{formatMoney(selectedTicket.price)}</strong>
+                <small className="mt-2 block text-sm text-neutral-600">{remaining} left / limit {selectedTicket.perUserLimit}</small>
+              </div>
+              <div className="grid grid-cols-3 border border-neutral-300 text-center text-xs font-semibold uppercase tracking-[0.08em]" aria-label="Checkout steps">
+                <span className="border-r border-neutral-300 bg-neutral-950 px-2 py-3 text-white">Zone</span>
+                <span className="border-r border-neutral-300 px-2 py-3 text-neutral-600">Quantity</span>
+                <span className="px-2 py-3 text-neutral-600">Payment</span>
               </div>
               <label>
                 Quantity
@@ -233,49 +249,52 @@ export default function ConcertDetailPage() {
                   onChange={(event) => setQuantity(Number(event.target.value))}
                 />
               </label>
-              <div className="segmented-control" aria-label="Payment provider">
-                {(["VNPAY", "MOMO"] as const).map((provider) => (
-                  <button
-                    className={paymentProvider === provider ? "selected" : ""}
-                    key={provider}
-                    type="button"
-                    onClick={() => setPaymentProvider(provider)}
-                  >
-                    {provider}
-                  </button>
-                ))}
+              <div>
+                <span className="text-sm font-medium">Payment provider</span>
+                <div className="mt-2 grid grid-cols-2 border border-neutral-500" aria-label="Payment provider">
+                  {(["VNPAY", "MOMO"] as const).map((provider) => (
+                    <button
+                      className={paymentProvider === provider ? "min-h-11 bg-neutral-950 px-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950" : "min-h-11 px-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"}
+                      key={provider}
+                      type="button"
+                      onClick={() => setPaymentProvider(provider)}
+                    >
+                      {provider}
+                    </button>
+                  ))}
+                </div>
               </div>
               {queueStatus?.active ? (
-                <div className="queue-panel" aria-live="polite">
-                  <div>
-                    <span>Queue position</span>
-                    <strong>{queueStatus.position ?? "Admitted"}</strong>
+                <div className="grid grid-cols-2 gap-px bg-neutral-300" aria-live="polite">
+                  <div className="bg-white p-3">
+                    <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Queue position</span>
+                    <strong className="mt-2 block text-xl">{queueStatus.position ?? "Admitted"}</strong>
                   </div>
-                  <div>
-                    <span>Estimated wait</span>
-                    <strong>{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
+                  <div className="bg-white p-3">
+                    <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Estimated wait</span>
+                    <strong className="mt-2 block text-xl">{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
                   </div>
                 </div>
               ) : null}
-              {!saleOpen ? <p className="inline-error">Sale opens {formatDate(selectedTicket.saleOpensAt)}.</p> : null}
-              <button className="primary-button" disabled={!canBuy || submitting || pendingPurchase} type="submit">
+              {!saleOpen ? <p className={ui.alertError}>Sale opens {formatDate(selectedTicket.saleOpensAt)}.</p> : null}
+              <button className={ui.primaryButton} disabled={!canBuy || submitting || pendingPurchase} type="submit">
                 {pendingPurchase ? "Waiting room" : submitting ? "Redirecting..." : "Continue to payment"}
               </button>
             </form>
           ) : (
-            <p className="muted">No ticket types are available.</p>
+            <p className={`${ui.muted} mt-5`}>No ticket types are available.</p>
           )}
         </aside>
 
-        <article className="panel artist-panel">
-          <h2>Artist info</h2>
-          <p className="muted">{concert.artistBio || "Artist bio coming soon..."}</p>
+        <article className={ui.panel}>
+          <h2 className="text-xl font-bold">Artist info</h2>
+          <p className={`${ui.muted} mt-3`}>{concert.artistBio || "Artist bio coming soon..."}</p>
         </article>
 
-        <article className="panel">
-          <h2>Venue</h2>
-          <p className="muted">{concert.venue}</p>
-          <p className="muted">{concert.description || "Concert details will be updated by the organizer."}</p>
+        <article className={ui.panel}>
+          <h2 className="text-xl font-bold">Venue</h2>
+          <p className={`${ui.muted} mt-3`}>{concert.venue}</p>
+          <p className={`${ui.muted} mt-2`}>{concert.description || "Concert details will be updated by the organizer."}</p>
         </article>
       </section>
     </main>

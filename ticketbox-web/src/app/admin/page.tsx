@@ -20,6 +20,7 @@ import {
   toTicketTypeRequest,
   uploadArtistPdf
 } from "../../lib/admin-api";
+import { ui } from "../../components/ui";
 
 const EMPTY_CONCERT: ConcertForm = {
   name: "",
@@ -308,29 +309,33 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <main className="admin-shell">
-      <header className="admin-topbar">
+    <main className={ui.adminPage}>
+      <header className="flex flex-wrap items-end justify-between gap-6 border-y border-neutral-950 py-5">
         <div>
-          <p className="eyebrow">TicketBox Admin</p>
-          <h1>Organizer workspace</h1>
+          <p className={ui.eyebrow}>TicketBox Admin</p>
+          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Organizer workspace</h1>
+          <p className={`${ui.muted} mt-3`}>Manage event setup, inventory, check-in exceptions, and refund queues.</p>
         </div>
-        <div className="topbar-actions">
-          <span>{sessionEmail}</span>
-          <button className="ghost-button" type="button" onClick={signOut}>
+        <div className={ui.navActions}>
+          <span className="hidden max-w-56 truncate text-sm text-neutral-600 sm:inline">{sessionEmail}</span>
+          <button className={ui.ghostButton} type="button" onClick={signOut}>
             Sign out
           </button>
         </div>
       </header>
 
-      {message ? <p className="toast success">{message}</p> : null}
-      {error ? <p className="toast error" role="alert">{error}</p> : null}
+      {message ? <p className={`${ui.alertSuccess} mt-6`}>{message}</p> : null}
+      {error ? <p className={`${ui.alertError} mt-6`} role="alert">{error}</p> : null}
 
-      <section className="admin-grid">
-        <aside className="admin-sidebar" aria-label="Concert list">
-          <div className="section-heading">
-            <h2>Concerts</h2>
+      <section className="mt-6 grid gap-6 xl:grid-cols-[23rem_minmax(0,1fr)]">
+        <aside className="border border-neutral-950 p-5" aria-label="Concert list">
+          <div className={ui.sectionHeading}>
+            <div>
+              <p className={ui.eyebrow}>Events</p>
+              <h2 className="mt-2 text-2xl font-bold">Concerts</h2>
+            </div>
             <button
-              className="secondary-button"
+              className={ui.secondaryButton}
               type="button"
               onClick={() => {
                 setDetail(null);
@@ -345,9 +350,9 @@ export default function AdminDashboardPage() {
               New
             </button>
           </div>
-          {loading ? <p className="muted">Loading concerts...</p> : null}
-          <div className="table-scroll">
-            <table className="data-table">
+          {loading ? <p className={`${ui.muted} mt-5`}>Loading concerts...</p> : null}
+          <div className={`${ui.tableWrap} mt-5`}>
+            <table className={`${ui.table} min-w-[33rem]`}>
               <thead>
                 <tr>
                   <th>Name</th>
@@ -358,12 +363,11 @@ export default function AdminDashboardPage() {
               <tbody>
                 {concerts.map((concert) => (
                   <tr
-                    className={concert.id === selectedId ? "selected-row" : ""}
+                    className={concert.id === selectedId ? "bg-neutral-100" : ""}
                     key={concert.id}
-                    onClick={() => setSelectedId(concert.id)}
                   >
                     <td>
-                      <button className="row-button" type="button">
+                      <button className={ui.rowButton} type="button" onClick={() => setSelectedId(concert.id)}>
                         <strong>{concert.name}</strong>
                         <span>{concert.eventCode}</span>
                       </button>
@@ -384,29 +388,29 @@ export default function AdminDashboardPage() {
           </div>
         </aside>
 
-        <section className="admin-content" aria-live="polite">
-          <div className="workspace-header">
+        <section aria-live="polite">
+          <div className="flex flex-wrap items-end justify-between gap-5 border-b border-neutral-950 pb-5">
             <div>
-              <p className="eyebrow">{detail ? "Editing" : "Creating"}</p>
-              <h2>{detail?.name || "New concert"}</h2>
-              {selectedConcert ? <p className="muted">{selectedConcert.venue}</p> : null}
+              <p className={ui.eyebrow}>{detail ? "Editing" : "Creating"}</p>
+              <h2 className="mt-2 text-3xl font-black">{detail?.name || "New concert"}</h2>
+              {selectedConcert ? <p className={`${ui.muted} mt-2`}>{selectedConcert.venue}</p> : null}
             </div>
             {detail ? (
-              <div className="action-row">
-                <button className="secondary-button" disabled={saving || detail.status !== "DRAFT"} type="button" onClick={publishConcert}>
+              <div className={ui.actionRow}>
+                <button className={ui.secondaryButton} disabled={saving || detail.status !== "DRAFT"} type="button" onClick={publishConcert}>
                   Publish
                 </button>
-                <button className="danger-button" disabled={saving || detail.status === "CANCELLED"} type="button" onClick={cancelConcert}>
+                <button className={ui.dangerButton} disabled={saving || detail.status === "CANCELLED"} type="button" onClick={cancelConcert}>
                   Cancel
                 </button>
               </div>
             ) : null}
           </div>
 
-          <div className="panel-grid">
-            <section className="panel wide-panel" aria-labelledby="concert-form-title">
-              <h3 id="concert-form-title">Concert details</h3>
-              <form className="form-grid two-column" onSubmit={submitConcert}>
+          <div className="mt-6 grid gap-6 xl:grid-cols-2">
+            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="concert-form-title">
+              <h3 className="text-xl font-bold" id="concert-form-title">Concert details</h3>
+              <form className={`${ui.form} mt-5 md:grid-cols-2`} onSubmit={submitConcert}>
                 <label>
                   Name
                   <input required value={form.name} onChange={(event) => setFormValue("name", event.target.value)} />
@@ -423,28 +427,28 @@ export default function AdminDashboardPage() {
                   Event date
                   <input required type="datetime-local" value={form.eventDate} onChange={(event) => setFormValue("eventDate", event.target.value)} />
                 </label>
-                <label className="span-two">
+                <label className="md:col-span-2">
                   Description
                   <textarea value={form.description} onChange={(event) => setFormValue("description", event.target.value)} />
                 </label>
-                <label className="span-two">
+                <label className="md:col-span-2">
                   Published artist bio
                   <textarea value={form.artistBio} onChange={(event) => setFormValue("artistBio", event.target.value)} />
                 </label>
-                <label className="span-two">
+                <label className="md:col-span-2">
                   Seat map SVG
                   <input accept=".svg,image/svg+xml" type="file" onChange={handleSeatMapUpload} />
                   <textarea required value={form.seatMapSvg} onChange={(event) => setFormValue("seatMapSvg", event.target.value)} />
                 </label>
-                <button className="primary-button span-two" disabled={saving} type="submit">
+                <button className={`${ui.primaryButton} md:col-span-2`} disabled={saving} type="submit">
                   {saving ? "Saving..." : detail ? "Save concert" : "Create concert"}
                 </button>
               </form>
             </section>
 
-            <section className="panel" aria-labelledby="ticket-form-title">
-              <h3 id="ticket-form-title">Ticket types</h3>
-              <form className="form-grid" onSubmit={submitTicketType}>
+            <section className={ui.panel} aria-labelledby="ticket-form-title">
+              <h3 className="text-xl font-bold" id="ticket-form-title">Ticket types</h3>
+              <form className={`${ui.form} mt-5`} onSubmit={submitTicketType}>
                 <label>
                   Name
                   <input required value={ticketForm.name} onChange={(event) => setTicketValue("name", event.target.value)} />
@@ -473,13 +477,13 @@ export default function AdminDashboardPage() {
                   Per-user limit
                   <input required min="1" type="number" value={ticketForm.perUserLimit} onChange={(event) => setTicketValue("perUserLimit", event.target.value)} />
                 </label>
-                <button className="secondary-button" disabled={!detail || saving} type="submit">
+                <button className={ui.secondaryButton} disabled={!detail || saving} type="submit">
                   {ticketForm.id ? "Update ticket type" : "Add ticket type"}
                 </button>
               </form>
-              <div className="compact-list">
+              <div className="mt-5 grid border-t border-neutral-300">
                 {detail?.ticketTypes.map((ticket) => (
-                  <button className="list-row" key={ticket.id} type="button" onClick={() => setTicketForm(fromTicket(ticket))}>
+                  <button className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-300 py-3 text-left text-sm transition-colors hover:text-neutral-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950" key={ticket.id} type="button" onClick={() => setTicketForm(fromTicket(ticket))}>
                     <span>{ticket.name} / {ticket.zone}</span>
                     <strong>{ticket.remainingQuantity}/{ticket.totalQuantity}</strong>
                   </button>
@@ -487,57 +491,59 @@ export default function AdminDashboardPage() {
               </div>
             </section>
 
-            <section className="panel" aria-labelledby="bio-title">
-              <h3 id="bio-title">AI artist bio</h3>
-              <div className="status-line">
+            <section className={ui.panel} aria-labelledby="bio-title">
+              <h3 className="text-xl font-bold" id="bio-title">AI artist bio</h3>
+              <div className="mt-5 flex items-center justify-between border-y border-neutral-300 py-3 text-sm">
                 <span>Status</span>
                 <strong>{bio?.bioStatus || "Not started"}</strong>
               </div>
-              {bio?.bioError ? <p className="inline-error">{bio.bioError}</p> : null}
-              <label className="file-drop">
+              {bio?.bioError ? <p className={`${ui.alertError} mt-4`}>{bio.bioError}</p> : null}
+              <label className="mt-4 grid gap-2 border border-dashed border-neutral-500 p-4 text-sm font-medium text-neutral-950">
                 Press kit PDF
                 <input accept="application/pdf,.pdf" disabled={!detail || saving} type="file" onChange={handlePdfUpload} />
               </label>
-              <label className="form-grid">
+              <label className={`${ui.form} mt-4`}>
                 Draft text
                 <textarea value={bioDraft} onChange={(event) => setBioDraft(event.target.value)} />
               </label>
-              <div className="action-row">
-                <button className="secondary-button" disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={saveBioDraft}>
+              <div className={`${ui.actionRow} mt-4`}>
+                <button className={ui.secondaryButton} disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={saveBioDraft}>
                   Save draft
                 </button>
-                <button className="primary-button" disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={publishBio}>
+                <button className={ui.primaryButton} disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={publishBio}>
                   Publish bio
                 </button>
-                <button className="ghost-button" disabled={!detail || saving} type="button" onClick={rejectBio}>
+                <button className={ui.ghostButton} disabled={!detail || saving} type="button" onClick={rejectBio}>
                   Reject
                 </button>
               </div>
             </section>
 
-            <section className="panel" aria-labelledby="stats-title">
-              <h3 id="stats-title">Stats</h3>
-              <div className="metric-grid">
+            <section className={ui.panel} aria-labelledby="stats-title">
+              <h3 className="text-xl font-bold" id="stats-title">Stats</h3>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Metric label="Revenue" value={formatMoney(stats?.revenueTotal || 0)} />
                 <Metric label="Check-ins" value={String(stats?.checkinCount || 0)} />
               </div>
-              <div className="bar-list">
+              <div className="mt-5 grid gap-3">
                 {stats?.ticketsSoldPerType.map((item) => (
-                  <div className="bar-row" key={item.ticketTypeId}>
-                    <span>{item.name}</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${Math.min(100, item.soldQuantity * 8)}%` }} />
+                  <div className="grid grid-cols-[minmax(0,1fr)_3rem] items-center gap-3 text-sm" key={item.ticketTypeId}>
+                    <div>
+                      <span className="block text-neutral-700">{item.name}</span>
+                      <div className="mt-2 h-2 bg-neutral-200">
+                        <div className="h-full bg-neutral-950" style={{ width: `${Math.min(100, item.soldQuantity * 8)}%` }} />
+                      </div>
                     </div>
-                    <strong>{item.soldQuantity}</strong>
+                    <strong className="text-right">{item.soldQuantity}</strong>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="panel wide-panel" aria-labelledby="conflicts-title">
-              <h3 id="conflicts-title">Check-in conflicts</h3>
-              <div className="table-scroll">
-                <table className="data-table">
+            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="conflicts-title">
+              <h3 className="text-xl font-bold" id="conflicts-title">Check-in conflicts</h3>
+              <div className={`${ui.tableWrap} mt-5`}>
+                <table className={ui.table}>
                   <thead>
                     <tr>
                       <th>Ticket</th>
@@ -569,10 +575,10 @@ export default function AdminDashboardPage() {
               </div>
             </section>
 
-            <section className="panel wide-panel" aria-labelledby="refunds-title">
-              <h3 id="refunds-title">Refunds</h3>
-              <div className="table-scroll">
-                <table className="data-table">
+            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="refunds-title">
+              <h3 className="text-xl font-bold" id="refunds-title">Refunds</h3>
+              <div className={`${ui.tableWrap} mt-5`}>
+                <table className={ui.table}>
                   <thead>
                     <tr>
                       <th>Order</th>
@@ -594,7 +600,7 @@ export default function AdminDashboardPage() {
                         <td>{order.refundReason || "Manual refund required"}</td>
                         <td>{order.paidAt ? formatDate(order.paidAt) : "-"}</td>
                         <td>
-                          <button className="secondary-button compact-button" disabled={saving} type="button" onClick={() => markRefunded(order.orderId)}>
+                          <button className={`${ui.secondaryButton} ${ui.compactButton}`} disabled={saving} type="button" onClick={() => markRefunded(order.orderId)}>
                             Mark refunded
                           </button>
                         </td>
@@ -623,12 +629,12 @@ export default function AdminDashboardPage() {
 }
 
 function StatusBadge({ status }: { status: ConcertSummary["status"] }) {
-  return <span className={`status-badge status-${status.toLowerCase()}`}>{status}</span>;
+  return <span className={ui.statusBadge}>{status}</span>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="metric">
+    <div className={ui.metric}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
