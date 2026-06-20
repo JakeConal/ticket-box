@@ -1,53 +1,72 @@
 @import "tailwindcss";
 
 @theme {
-  --animate-page-in: page-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-staff-sweep: staff-sweep 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-note-sweep: note-sweep 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-score-sheet-cover: score-sheet-cover 300ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  --animate-score-sheet-reveal: score-sheet-reveal 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-score-staff-flow: score-staff-flow 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-score-note-flow: score-note-flow 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
 
-  @keyframes page-in {
+  @keyframes score-sheet-cover {
     from {
-      opacity: 0;
-      translate: 0 12px;
+      translate: -118% 0;
+      rotate: -1.5deg;
     }
 
     to {
-      opacity: 1;
       translate: 0 0;
+      rotate: 0deg;
     }
   }
 
-  @keyframes staff-sweep {
+  @keyframes score-sheet-reveal {
     from {
-      opacity: 0;
-      translate: -24% 0;
-    }
-
-    35% {
-      opacity: 0.16;
+      translate: 0 0;
+      rotate: 0deg;
     }
 
     to {
-      opacity: 0;
-      translate: 24% 0;
+      translate: 118% 0;
+      rotate: 1.5deg;
     }
   }
 
-  @keyframes note-sweep {
+  @keyframes score-staff-flow {
     from {
-      opacity: 0;
-      rotate: -10deg;
-      translate: -3rem 1.5rem;
+      opacity: 0.25;
+      rotate: -1deg;
+      translate: -5% 0.75rem;
     }
 
-    40% {
-      opacity: 0.32;
+    50% {
+      opacity: 0.82;
+      rotate: 0.5deg;
+      translate: 1% -0.5rem;
     }
 
     to {
+      opacity: 0.58;
+      rotate: -0.25deg;
+      translate: 5% 0.25rem;
+    }
+  }
+
+  @keyframes score-note-flow {
+    from {
       opacity: 0;
-      rotate: 12deg;
-      translate: 14rem -3rem;
+      rotate: -8deg;
+      translate: -2rem 1rem;
+    }
+
+    45% {
+      opacity: 1;
+      rotate: 3deg;
+      translate: 0 -0.5rem;
+    }
+
+    to {
+      opacity: 0.72;
+      rotate: -2deg;
+      translate: 2rem 0.25rem;
     }
   }
 }
