@@ -233,11 +233,6 @@ export default function ConcertDetailPage() {
                 <strong className="mt-2 block text-2xl font-black">{formatMoney(selectedTicket.price)}</strong>
                 <small className="mt-2 block text-sm text-neutral-600">{remaining} left / limit {selectedTicket.perUserLimit}</small>
               </div>
-              <div className="grid grid-cols-3 border border-neutral-300 text-center text-xs font-semibold uppercase tracking-[0.08em]" aria-label="Checkout steps">
-                <span className="border-r border-neutral-300 bg-neutral-950 px-2 py-3 text-white">Zone</span>
-                <span className="border-r border-neutral-300 px-2 py-3 text-neutral-600">Quantity</span>
-                <span className="px-2 py-3 text-neutral-600">Payment</span>
-              </div>
               <label>
                 Quantity
                 <input
