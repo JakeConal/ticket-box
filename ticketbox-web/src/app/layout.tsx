@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { MusicBackdrop } from "../components/music-backdrop";
+import { PageTransition } from "../components/page-transition";
 
 export const metadata: Metadata = {
   title: "TicketBox",
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-w-80 bg-white font-sans text-neutral-950 antialiased">
         <MusicBackdrop />
-        <div className="relative z-10">{children}</div>
+        <div className="relative z-10">
+          <PageTransition>{children}</PageTransition>
+        </div>
       </body>
     </html>
   );

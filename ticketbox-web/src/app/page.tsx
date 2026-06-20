@@ -13,7 +13,6 @@ import {
   logoutAudience
 } from "../lib/audience-api";
 import { ui } from "../components/ui";
-import { MusicMarks } from "../components/music-backdrop";
 import { MusicThumbnail } from "../components/music-thumbnail";
 
 type AvailabilitySummary = Record<string, { remaining: number; soldOut: boolean }>;
@@ -74,7 +73,7 @@ export default function Home() {
     <main className={ui.page}>
       <AudienceNav session={session} onLogout={signOut} />
 
-      <section className="grid gap-8 border-b border-neutral-950 pb-10 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-end">
+      <section className="grid gap-8 border-b border-neutral-950 pb-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
         <div className="max-w-2xl">
           <p className={ui.eyebrow}>TicketBox</p>
           <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl">Find the next big concert and move straight to checkout.</h1>
@@ -84,16 +83,42 @@ export default function Home() {
             <Link className={ui.ghostButton} href="/me/tickets">Open wallet</Link>
           </div>
         </div>
-        <div className="relative grid grid-cols-[1fr_auto] gap-3 border border-neutral-950 bg-white p-4 sm:p-5" aria-hidden="true">
-          <MusicMarks className="absolute -right-3 -top-8 flex gap-1 text-3xl font-black leading-none text-neutral-950/15 sm:text-4xl" />
-          <div className="flex min-h-40 flex-col justify-between border border-neutral-950 bg-neutral-950 p-4 text-white">
-            <span className="text-xs font-semibold tracking-[0.14em]">LIVE</span>
-            <strong className="text-2xl font-black">TicketBox</strong>
-            <small className="text-sm text-neutral-300">Fast entry QR</small>
+        <div className="relative mx-auto h-[21rem] w-full max-w-[22rem] sm:h-[25rem] lg:ml-auto lg:h-[23rem]" aria-label="Concert photo collage">
+          <div className="absolute left-0 top-8 w-[58%] overflow-hidden border border-neutral-950 bg-neutral-100 shadow-[3px_3px_0_0_rgb(23_23_23)] -rotate-6">
+            <img
+              alt="Crowd at a live concert"
+              className="h-full w-full object-cover grayscale contrast-125"
+              decoding="async"
+              fetchPriority="high"
+              src="https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=900&q=80"
+            />
           </div>
-          <div className="flex min-h-40 w-20 flex-col justify-between border border-neutral-950 p-3">
-            <span className="text-2xl font-black">{page?.totalElements ?? 0}</span>
-            <small className="text-xs leading-4 text-neutral-600">published concerts</small>
+          <div className="absolute right-0 top-0 w-[47%] overflow-hidden border border-neutral-950 bg-neutral-100 shadow-[3px_3px_0_0_rgb(23_23_23)] rotate-6">
+            <img
+              alt="Musician performing on stage"
+              className="h-full w-full object-cover grayscale contrast-125"
+              decoding="async"
+              loading="lazy"
+              src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=600&q=80"
+            />
+          </div>
+          <div className="absolute bottom-1 left-[21%] w-[57%] overflow-hidden border border-neutral-950 bg-neutral-100 shadow-[3px_3px_0_0_rgb(23_23_23)] rotate-3">
+            <img
+              alt="Stage lights above a concert audience"
+              className="aspect-[4/3] h-full w-full object-cover grayscale contrast-125"
+              decoding="async"
+              loading="lazy"
+              src="https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=700&q=80"
+            />
+          </div>
+          <div className="absolute bottom-10 right-0 w-[35%] overflow-hidden border border-neutral-950 bg-neutral-100 shadow-[3px_3px_0_0_rgb(23_23_23)] -rotate-6">
+            <img
+              alt="Hands raised during a live music set"
+              className="aspect-square h-full w-full object-cover grayscale contrast-125"
+              decoding="async"
+              loading="lazy"
+              src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=500&q=80"
+            />
           </div>
         </div>
       </section>
@@ -164,7 +189,7 @@ function ConcertCard({ concert, availability }: { concert: ConcertSummary; avail
   );
 
   return (
-    <article className="flex min-h-full flex-col border border-neutral-950 bg-white">
+    <article className="group flex min-h-full flex-col border border-neutral-950 bg-white transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:shadow-[6px_6px_0_0_rgb(23_23_23)] focus-within:-translate-y-1 focus-within:shadow-[6px_6px_0_0_rgb(23_23_23)] motion-reduce:transform-none motion-reduce:transition-none">
       <div className="aspect-[16/8] border-b border-neutral-950 bg-neutral-100" aria-hidden="true">
         <MusicThumbnail seed={concert.id} />
       </div>
