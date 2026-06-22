@@ -86,7 +86,7 @@ public class TicketIssuanceService {
                         item.ticketTypeId(),
                         order.userId(),
                         qrToken,
-                        issuedAt);
+                        java.sql.Timestamp.from(issuedAt));
             }
         }
     }

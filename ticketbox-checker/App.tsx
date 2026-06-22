@@ -1,66 +1,36 @@
 import { StatusBar } from "expo-status-bar";
 import { BarCodeScanner } from "expo-barcode-scanner";
-import * as SecureStore from "expo-secure-store";
-import * as SQLite from "expo-sqlite";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  FlatList,
+  Platform,
   Pressable,
   SafeAreaView,
-  StyleSheet,
   Text,
-  TextInput,
   View
 } from "react-native";
-
-declare const atob: (value: string) => string;
-
-type Tab = "scan" | "sync" | "vip";
-
-type Assignment = {
-  id: string;
-  concertId: string;
-  checkerId: string;
-  deviceId?: string | null;
-  gateId: string;
-  laneId?: string | null;
-  allowedZones: string[];
-  state: "ACTIVE" | "STANDBY" | "INACTIVE";
-};
-
-type KeyBundle = {
-  concertId: string;
-  keys: { kid: string; alg: string; publicKeyPem: string }[];
-};
-
-type TicketPayload = {
-  ticketId: string;
-  concertId: string;
-  zone: string;
-};
-
-type LocalCheckin = {
-  client_scan_id: string;
-  ticket_id: string;
-  scanned_at: string;
-  gate_id: string;
-  lane_id: string | null;
-  zone: string;
-  sync_status: "PENDING_SYNC" | "SYNCED" | "CONFLICT";
-};
-
-const API_BASE_STORAGE_KEY = "ticketbox.apiBaseUrl";
-const TOKEN_STORAGE_KEY = "ticketbox.jwt";
-const CONCERT_STORAGE_KEY = "ticketbox.concertId";
-const KEY_BUNDLE_STORAGE_KEY = "ticketbox.keyBundle";
-const ASSIGNMENTS_STORAGE_KEY = "ticketbox.assignments";
-const DEVICE_STORAGE_KEY = "ticketbox.deviceId";
-
-const db = SQLite.openDatabaseSync("ticketbox-checker.db");
+import { Tab, Assignment, KeyBundle, TicketPayload, LocalCheckin } from "./src/types";
+import {
+  SecureStore,
+  readJson,
+  API_BASE_STORAGE_KEY,
+  TOKEN_STORAGE_KEY,
+  CONCERT_STORAGE_KEY,
+  KEY_BUNDLE_STORAGE_KEY,
+  ASSIGNMENTS_STORAGE_KEY,
+  DEVICE_STORAGE_KEY
+} from "./src/services/storage";
+import { db, initDb } from "./src/services/db";
+import { verifyRs256, makeId, normalize, bytesToText, base64UrlToBytes } from "./src/utils/crypto";
+import styles from "./src/styles";
+import { StatusBanner, TabBar } from "./src/components/UI";
+import { LoginScreen } from "./src/screens/LoginScreen";
+import { ScanTab } from "./src/screens/ScanTab";
+import { SyncTab } from "./src/screens/SyncTab";
+import { VipTab } from "./src/screens/VipTab";
 
 export default function App() {
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:8080");
+  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:8088");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [concertId, setConcertId] = useState("");
@@ -75,6 +45,15 @@ export default function App() {
   const [pending, setPending] = useState<LocalCheckin[]>([]);
   const [vipQuery, setVipQuery] = useState("");
   const [vipGuests, setVipGuests] = useState<any[]>([]);
+  const [mockScanToken, setMockScanToken] = useState("");
+
+  const getCleanUrl = () => {
+    let url = apiBaseUrl.trim();
+    if (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    return url;
+  };
 
   const activeAssignment = useMemo(
     () => assignments.find((assignment) => assignment.state === "ACTIVE"),
@@ -88,9 +67,11 @@ export default function App() {
   useEffect(() => {
     initDb();
     void hydrate();
-    void BarCodeScanner.requestPermissionsAsync().then(({ status }) => {
-      setHasCameraPermission(status === "granted");
-    });
+    if (Platform.OS !== 'web') {
+      void BarCodeScanner.requestPermissionsAsync().then(({ status }) => {
+        setHasCameraPermission(status === "granted");
+      });
+    }
   }, []);
 
   async function hydrate() {
@@ -110,7 +91,7 @@ export default function App() {
 
   async function login() {
     setStatus("Signing in...");
-    const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
+    const response = await fetch(`${getCleanUrl()}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
@@ -125,11 +106,21 @@ export default function App() {
       setStatus("Login response did not include an access token.");
       return;
     }
-    await SecureStore.setItemAsync(API_BASE_STORAGE_KEY, apiBaseUrl);
+    await SecureStore.setItemAsync(API_BASE_STORAGE_KEY, getCleanUrl());
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, accessToken);
     await SecureStore.setItemAsync(CONCERT_STORAGE_KEY, concertId);
     setToken(accessToken);
     await refreshCheckerState(accessToken);
+  }
+
+  async function logout() {
+    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(ASSIGNMENTS_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(KEY_BUNDLE_STORAGE_KEY);
+    setToken(null);
+    setAssignments([]);
+    setKeyBundle(null);
+    setStatus("Sign in to load assignments.");
   }
 
   async function refreshCheckerState(nextToken = token) {
@@ -139,8 +130,8 @@ export default function App() {
     }
     const headers = { Authorization: `Bearer ${nextToken}` };
     const [bundleResponse, assignmentsResponse] = await Promise.all([
-      fetch(`${apiBaseUrl}/api/checker/key-bundle?concertId=${concertId}`, { headers }),
-      fetch(`${apiBaseUrl}/api/checker/assignments?concertId=${concertId}`, { headers })
+      fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, { headers }),
+      fetch(`${getCleanUrl()}/api/checker/assignments?concertId=${concertId}`, { headers })
     ]);
     if (!bundleResponse.ok || !assignmentsResponse.ok) {
       setStatus("Could not refresh checker keys or assignments.");
@@ -252,7 +243,7 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(`${apiBaseUrl}/api/checkins/${row.ticket_id}`, {
+      const response = await fetch(`${getCleanUrl()}/api/checkins/${row.ticket_id}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -297,13 +288,14 @@ export default function App() {
       return;
     }
     const rows = db.getAllSync<LocalCheckin>(
-      "select * from local_checkins where sync_status = 'PENDING_SYNC' order by scanned_at asc"
+      "select * from local_checkins where sync_status = 'PENDING_SYNC' order by scanned_at asc",
+      []
     );
     if (rows.length === 0) {
       setStatus("No pending scans.");
       return;
     }
-    const response = await fetch(`${apiBaseUrl}/api/checkins/batch`, {
+    const response = await fetch(`${getCleanUrl()}/api/checkins/batch`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -349,7 +341,7 @@ export default function App() {
     setAssignments(nextAssignments);
     setStatus("Emergency local activation recorded. Sync audit when online.");
     if (token) {
-      await fetch(`${apiBaseUrl}/api/checker/assignment-audit`, {
+      await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -372,7 +364,7 @@ export default function App() {
       return;
     }
     const response = await fetch(
-      `${apiBaseUrl}/api/vip-guests?concertId=${concertId}&q=${encodeURIComponent(vipQuery)}`,
+      `${getCleanUrl()}/api/vip-guests?concertId=${concertId}&q=${encodeURIComponent(vipQuery)}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     if (!response.ok) {
@@ -388,7 +380,7 @@ export default function App() {
     if (!token) {
       return;
     }
-    const response = await fetch(`${apiBaseUrl}/api/vip-guests/${guestId}/enter`, {
+    const response = await fetch(`${getCleanUrl()}/api/vip-guests/${guestId}/enter`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -413,7 +405,8 @@ export default function App() {
   function loadPending() {
     setPending(
       db.getAllSync<LocalCheckin>(
-        "select * from local_checkins order by scanned_at desc limit 50"
+        "select * from local_checkins order by scanned_at desc limit 50",
+        []
       )
     );
   }
@@ -422,332 +415,66 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title}>TicketBox Checker</Text>
-        <Text style={styles.status}>{status}</Text>
-      </View>
-
-      {!signedIn ? (
-        <View style={styles.panel}>
-          <TextInput style={styles.input} value={apiBaseUrl} onChangeText={setApiBaseUrl} placeholder="API base URL" />
-          <TextInput style={styles.input} value={concertId} onChangeText={setConcertId} placeholder="Concert ID" />
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Checker email" autoCapitalize="none" />
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry />
-          <Pressable style={styles.primaryButton} onPress={login}>
-            <Text style={styles.primaryButtonText}>Sign in and cache assignment</Text>
-          </Pressable>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>TICKETBOX CHECKER</Text>
+          {signedIn ? (
+            <Pressable style={styles.logoutButton} onPress={logout}>
+              <Text style={styles.logoutButtonText}>LOGOUT</Text>
+            </Pressable>
+          ) : null}
         </View>
-      ) : (
-        <>
-          <View style={styles.tabs}>
-            {(["scan", "sync", "vip"] as Tab[]).map((item) => (
-              <Pressable
-                key={item}
-                style={[styles.tab, tab === item && styles.activeTab]}
-                onPress={() => setTab(item)}
-              >
-                <Text style={[styles.tabText, tab === item && styles.activeTabText]}>{item.toUpperCase()}</Text>
-              </Pressable>
-            ))}
-          </View>
 
-          {tab === "scan" && (
-            <View style={styles.panel}>
-              <Text style={styles.assignment}>
-                {activeAssignment
-                  ? `${activeAssignment.gateId}${activeAssignment.laneId ? ` / ${activeAssignment.laneId}` : ""} - ${activeAssignment.allowedZones.join(", ")}`
-                  : "No ACTIVE assignment cached"}
-              </Text>
-              {hasCameraPermission ? (
-                <BarCodeScanner
-                  onBarCodeScanned={handleScan}
-                  barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
-                  style={styles.scanner}
-                />
-              ) : (
-                <Text style={styles.status}>Camera permission is required for QR scanning.</Text>
-              )}
-              <View style={styles.row}>
-                <Pressable style={styles.secondaryButton} onPress={() => refreshCheckerState()}>
-                  <Text style={styles.secondaryButtonText}>Refresh online</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButton} onPress={activateStandbyLocally}>
-                  <Text style={styles.secondaryButtonText}>Emergency activate</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
+        <StatusBanner status={status} />
 
-          {tab === "sync" && (
-            <View style={styles.panel}>
-              <Pressable style={styles.primaryButton} onPress={flushQueue}>
-                <Text style={styles.primaryButtonText}>Flush pending sync</Text>
-              </Pressable>
-              <FlatList
-                data={pending}
-                keyExtractor={(item) => item.client_scan_id}
-                renderItem={({ item }) => (
-                  <View style={styles.listItem}>
-                    <Text style={styles.listTitle}>{item.ticket_id}</Text>
-                    <Text style={styles.listMeta}>{item.zone} - {item.sync_status}</Text>
-                  </View>
-                )}
+        {!signedIn ? (
+          <LoginScreen
+            apiBaseUrl={apiBaseUrl}
+            setApiBaseUrl={setApiBaseUrl}
+            concertId={concertId}
+            setConcertId={setConcertId}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            onLogin={login}
+          />
+        ) : (
+          <>
+            <TabBar activeTab={tab} onTabSelect={setTab} />
+
+            {tab === "scan" && (
+              <ScanTab
+                activeAssignment={activeAssignment}
+                mockScanToken={mockScanToken}
+                setMockScanToken={setMockScanToken}
+                onScan={handleScan}
+                hasCameraPermission={hasCameraPermission}
+                onRefresh={() => refreshCheckerState()}
+                onEmergencyActivate={activateStandbyLocally}
               />
-            </View>
-          )}
+            )}
 
-          {tab === "vip" && (
-            <View style={styles.panel}>
-              <View style={styles.row}>
-                <TextInput style={[styles.input, styles.flex]} value={vipQuery} onChangeText={setVipQuery} placeholder="VIP name or phone" />
-                <Pressable style={styles.secondaryButton} onPress={searchVip}>
-                  <Text style={styles.secondaryButtonText}>Search</Text>
-                </Pressable>
-              </View>
-              <FlatList
-                data={vipGuests}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={styles.listItem}>
-                    <Text style={styles.listTitle}>{item.name}</Text>
-                    <Text style={styles.listMeta}>{item.zone} - {item.entered ? "Already admitted" : item.phoneMasked}</Text>
-                    <Pressable
-                      disabled={item.entered}
-                      style={[styles.smallButton, item.entered && styles.disabledButton]}
-                      onPress={() => enterVip(item.id)}
-                    >
-                      <Text style={styles.smallButtonText}>{item.entered ? "Admitted" : "Mark entered"}</Text>
-                    </Pressable>
-                  </View>
-                )}
+            {tab === "sync" && (
+              <SyncTab
+                pending={pending}
+                onFlush={flushQueue}
               />
-            </View>
-          )}
-        </>
-      )}
+            )}
+
+            {tab === "vip" && (
+              <VipTab
+                vipQuery={vipQuery}
+                setVipQuery={setVipQuery}
+                onSearch={searchVip}
+                vipGuests={vipGuests}
+                onEnter={enterVip}
+              />
+            )}
+          </>
+        )}
+      </View>
       <StatusBar style="auto" />
     </SafeAreaView>
   );
 }
-
-function initDb() {
-  db.execSync(`
-    create table if not exists local_checkins (
-      client_scan_id text primary key,
-      ticket_id text not null unique,
-      scanned_at text not null,
-      checker_id text not null,
-      device_id text not null,
-      gate_id text not null,
-      lane_id text,
-      zone text not null,
-      sync_status text not null
-    );
-  `);
-}
-
-async function verifyRs256(signingInput: string, encodedSignature: string, publicKeyPem: string) {
-  const subtle = (globalThis as any).crypto?.subtle;
-  if (!subtle) {
-    throw new Error("Device crypto API is unavailable for QR verification.");
-  }
-  const key = await subtle.importKey(
-    "spki",
-    pemToArrayBuffer(publicKeyPem),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"]
-  );
-  const valid = await subtle.verify(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    base64UrlToBytes(encodedSignature),
-    textToBytes(signingInput)
-  );
-  if (!valid) {
-    throw new Error("QR signature verification failed.");
-  }
-}
-
-function pemToArrayBuffer(pem: string) {
-  return base64ToBytes(
-    pem
-      .replace("-----BEGIN PUBLIC KEY-----", "")
-      .replace("-----END PUBLIC KEY-----", "")
-      .replace(/\s/g, "")
-  );
-}
-
-function base64UrlToBytes(value: string) {
-  return base64ToBytes(value.replace(/-/g, "+").replace(/_/g, "/"));
-}
-
-function base64ToBytes(value: string) {
-  const padded = value.padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function bytesToText(bytes: Uint8Array) {
-  return new TextDecoder().decode(bytes);
-}
-
-function textToBytes(value: string) {
-  return new TextEncoder().encode(value);
-}
-
-function readJson<T>(value: string | null): T | null {
-  if (!value) {
-    return null;
-  }
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-}
-
-function makeId() {
-  const random = (globalThis as any).crypto?.randomUUID?.();
-  if (random) {
-    return random;
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const value = Math.floor(Math.random() * 16);
-    return (char === "x" ? value : (value & 0x3) | 0x8).toString(16);
-  });
-}
-
-function normalize(value: string) {
-  return value.trim().toUpperCase();
-}
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    padding: 16
-  },
-  header: {
-    gap: 8,
-    paddingVertical: 12
-  },
-  title: {
-    color: "#020617",
-    fontSize: 28,
-    fontWeight: "700"
-  },
-  status: {
-    color: "#475569",
-    fontSize: 14,
-    lineHeight: 20
-  },
-  panel: {
-    gap: 12,
-    flex: 1
-  },
-  input: {
-    backgroundColor: "#ffffff",
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#0f172a",
-    minHeight: 46,
-    paddingHorizontal: 12
-  },
-  primaryButton: {
-    alignItems: "center",
-    backgroundColor: "#047857",
-    borderRadius: 8,
-    padding: 14
-  },
-  primaryButtonText: {
-    color: "#ffffff",
-    fontWeight: "700"
-  },
-  secondaryButton: {
-    alignItems: "center",
-    backgroundColor: "#e2e8f0",
-    borderRadius: 8,
-    padding: 12
-  },
-  secondaryButtonText: {
-    color: "#0f172a",
-    fontWeight: "700"
-  },
-  row: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8
-  },
-  flex: {
-    flex: 1
-  },
-  tabs: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12
-  },
-  tab: {
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    padding: 10
-  },
-  activeTab: {
-    backgroundColor: "#0f172a"
-  },
-  tabText: {
-    color: "#334155",
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  activeTabText: {
-    color: "#ffffff"
-  },
-  assignment: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  scanner: {
-    aspectRatio: 1,
-    borderRadius: 8,
-    overflow: "hidden"
-  },
-  listItem: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 6,
-    marginBottom: 8,
-    padding: 12
-  },
-  listTitle: {
-    color: "#0f172a",
-    fontWeight: "700"
-  },
-  listMeta: {
-    color: "#475569"
-  },
-  smallButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#047857",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  disabledButton: {
-    backgroundColor: "#94a3b8"
-  },
-  smallButtonText: {
-    color: "#ffffff",
-    fontWeight: "700"
-  }
-});
