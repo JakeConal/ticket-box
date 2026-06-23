@@ -105,6 +105,20 @@ export type AdminOrder = {
   paidAt?: string | null;
 };
 
+export type VipImportSummary = {
+  fileName: string;
+  totalRows: number;
+  inserted: number;
+  updated: number;
+  deactivated: number;
+  skipped: number;
+  errored: number;
+  archived: boolean;
+  archive: string;
+  message: string;
+};
+
+
 const SESSION_KEY = "ticketbox.admin.session";
 
 export function readSession(): AuthSession | null {
@@ -176,6 +190,10 @@ export async function uploadArtistPdf(concertId: string, file: File) {
       body: form
     }
   );
+}
+
+export async function triggerVipImport(): Promise<VipImportSummary[]> {
+  return adminJson<VipImportSummary[]>("/api/admin/vip-imports", "POST");
 }
 
 export function toConcertRequest(form: ConcertForm) {

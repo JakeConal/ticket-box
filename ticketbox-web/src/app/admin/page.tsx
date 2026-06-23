@@ -18,7 +18,9 @@ import {
   readSession,
   toConcertRequest,
   toTicketTypeRequest,
-  uploadArtistPdf
+  uploadArtistPdf,
+  VipImportSummary,
+  triggerVipImport
 } from "../../lib/admin-api";
 import { ui } from "../../components/ui";
 
@@ -59,6 +61,8 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [vipSummaries, setVipSummaries] = useState<VipImportSummary[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     const session = readSession();
@@ -279,6 +283,25 @@ export default function AdminDashboardPage() {
       setRefunds(await adminGet<AdminOrder[]>(`/api/admin/orders?concertId=${detail.id}&status=REFUND_REQUIRED`));
       setMessage("Order marked refunded.");
     });
+  }
+
+  async function handleVipImport() {
+    setImporting(true);
+    setMessage("");
+    setError("");
+    try {
+      const summaries = await triggerVipImport();
+      setVipSummaries(summaries);
+      if (summaries.length === 0) {
+        setMessage("No new files found to process.");
+      } else {
+        setMessage(`Successfully processed ${summaries.length} import file(s).`);
+      }
+    } catch (caught) {
+      handleError(caught);
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function runAction(action: () => Promise<void>) {
@@ -539,6 +562,68 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
             </section>
+
+            <section className={ui.panel} aria-labelledby="vip-import-title">
+              <h3 className="text-xl font-bold" id="vip-import-title">VIP Guest Import</h3>
+              <p className={`${ui.muted} mt-2`}>
+                Manually process pending VIP guest list CSV files from the server's import directory.
+              </p>
+              
+              <div className="mt-4">
+                <button
+                  className={ui.primaryButton}
+                  disabled={importing}
+                  type="button"
+                  onClick={handleVipImport}
+                >
+                  {importing ? "Importing files..." : "Trigger VIP Import"}
+                </button>
+              </div>
+
+              {vipSummaries.length > 0 ? (
+                <div className="mt-5">
+                  <h4 className="font-semibold text-sm mb-3">Import Summaries</h4>
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th>File Name</th>
+                          <th>Total</th>
+                          <th>Inserted</th>
+                          <th>Updated</th>
+                          <th>Deactivated</th>
+                          <th>Skipped</th>
+                          <th>Errored</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vipSummaries.map((summary, idx) => (
+                          <tr key={idx}>
+                            <td>
+                              <span className="font-semibold block">{summary.fileName}</span>
+                              {summary.archived && summary.archive ? (
+                                <span className="block text-xs text-neutral-500 mt-1">Archived to: {summary.archive}</span>
+                              ) : null}
+                            </td>
+                            <td>{summary.totalRows}</td>
+                            <td>{summary.inserted}</td>
+                            <td>{summary.updated}</td>
+                            <td>{summary.deactivated}</td>
+                            <td>{summary.skipped}</td>
+                            <td className={summary.errored > 0 ? "text-red-700 font-semibold" : ""}>
+                              {summary.errored}
+                            </td>
+                            <td>{summary.message || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
 
             <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="conflicts-title">
               <h3 className="text-xl font-bold" id="conflicts-title">Check-in conflicts</h3>
