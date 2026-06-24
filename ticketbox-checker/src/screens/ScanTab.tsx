@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TextInput, Pressable, Platform } from "react-native";
-import { BarCodeScanner } from "expo-barcode-scanner";
+import { CameraView } from "expo-camera";
 import { Assignment } from "../types";
 import styles from "../styles";
 
@@ -23,6 +23,7 @@ export function ScanTab({
   onRefresh,
   onEmergencyActivate
 }: ScanTabProps) {
+  const [isMinimized, setIsMinimized] = useState(true);
   return (
     <View style={styles.panel}>
       <View style={styles.cardPanel}>
@@ -46,42 +47,64 @@ export function ScanTab({
         )}
       </View>
 
-      {Platform.OS === 'web' ? (
-        <View style={styles.cardPanel}>
-          <Text style={styles.eyebrow}>SIMULATION MODE</Text>
-          <Text style={styles.panelTitle}>SCAN SIMULATION</Text>
-          <Text style={styles.mutedText}>Enter or paste a ticket QR token (JWT) to simulate a barcode scan.</Text>
-          <View style={{ marginTop: 12, gap: 12 }}>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter ticket JWT here..."
-              placeholderTextColor="#737373"
-              value={mockScanToken}
-              onChangeText={setMockScanToken}
-            />
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => {
-                if (mockScanToken.trim()) {
-                  onScan({ data: mockScanToken.trim() });
-                  setMockScanToken("");
-                }
-              }}
-            >
-              <Text style={styles.primaryButtonText}>Simulate QR Ticket Scan</Text>
-            </Pressable>
+      {/* Simulation input is available on all platforms as a fallback for testing */}
+      <View style={styles.cardPanel}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>SIMULATION MODE</Text>
+            <Text style={styles.panelTitle}>SCAN SIMULATION</Text>
           </View>
+          <Pressable onPress={() => setIsMinimized(!isMinimized)} style={{ paddingLeft: 12, paddingVertical: 8 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0a0a0a' }}>
+              {isMinimized ? "[ + ]" : "[ − ]"}
+            </Text>
+          </Pressable>
         </View>
-      ) : hasCameraPermission ? (
-        <BarCodeScanner
-          onBarCodeScanned={onScan}
-          barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
-          style={styles.scanner}
-        />
-      ) : (
-        <View style={styles.cardPanel}>
-          <Text style={styles.errorText}>Camera permission is required for QR scanning.</Text>
-        </View>
+
+        {!isMinimized && (
+          <>
+            <Text style={styles.mutedText}>Enter or paste a ticket QR token (JWT) to simulate a barcode scan.</Text>
+            <View style={{ marginTop: 12, gap: 12 }}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter ticket JWT here..."
+                placeholderTextColor="#737373"
+                value={mockScanToken}
+                onChangeText={setMockScanToken}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable
+                style={styles.primaryButton}
+                onPress={() => {
+                  if (mockScanToken.trim()) {
+                    onScan({ data: mockScanToken.trim() });
+                    setMockScanToken("");
+                  }
+                }}
+              >
+                <Text style={styles.primaryButtonText}>Simulate QR Ticket Scan</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </View>
+
+      {/* Camera View is rendered on native devices when permissions are granted */}
+      {Platform.OS !== 'web' && (
+        hasCameraPermission ? (
+          <CameraView
+            onBarcodeScanned={onScan}
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
+            }}
+            style={styles.scanner}
+          />
+        ) : (
+          <View style={styles.cardPanel}>
+            <Text style={styles.errorText}>Camera permission is required for QR scanning.</Text>
+          </View>
+        )
       )}
 
       <View style={styles.row}>

@@ -231,6 +231,7 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   scanner: {
+    width: '100%',
     aspectRatio: 1.33,
     borderWidth: 2,
     borderColor: '#0a0a0a',
