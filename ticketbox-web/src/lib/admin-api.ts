@@ -118,6 +118,18 @@ export type VipImportSummary = {
   message: string;
 };
 
+export type VipGuestResponse = {
+  id: string;
+  concertId: string;
+  name: string;
+  phoneMasked: string;
+  sponsor?: string | null;
+  zone: string;
+  entered: boolean;
+  enteredAt?: string | null;
+};
+
+
 
 const SESSION_KEY = "ticketbox.admin.session";
 
@@ -194,6 +206,14 @@ export async function uploadArtistPdf(concertId: string, file: File) {
 
 export async function triggerVipImport(): Promise<VipImportSummary[]> {
   return adminJson<VipImportSummary[]>("/api/admin/vip-imports", "POST");
+}
+
+export async function getVipGuests(concertId: string): Promise<VipGuestResponse[]> {
+  return adminGet<VipGuestResponse[]>(`/api/admin/concerts/${concertId}/vip-guests`);
+}
+
+export async function deleteVipGuest(concertId: string, guestId: string): Promise<void> {
+  return adminJson<void>(`/api/admin/concerts/${concertId}/vip-guests/${guestId}`, "DELETE");
 }
 
 export function toConcertRequest(form: ConcertForm) {

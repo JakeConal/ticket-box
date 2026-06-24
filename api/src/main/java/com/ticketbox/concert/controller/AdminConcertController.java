@@ -7,6 +7,9 @@ import com.ticketbox.concert.dto.ConcertSummaryResponse;
 import com.ticketbox.concert.dto.TicketTypeRequest;
 import com.ticketbox.concert.dto.TicketTypeResponse;
 import com.ticketbox.concert.service.ConcertService;
+import com.ticketbox.auth.service.OrganizerOwnershipService;
+import com.ticketbox.checkin.dto.VipGuestResponse;
+import com.ticketbox.checkin.service.VipGuestService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -26,9 +29,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminConcertController {
 
     private final ConcertService concertService;
+    private final VipGuestService vipGuestService;
+    private final OrganizerOwnershipService organizerOwnershipService;
 
-    public AdminConcertController(ConcertService concertService) {
+    public AdminConcertController(
+            ConcertService concertService,
+            VipGuestService vipGuestService,
+            OrganizerOwnershipService organizerOwnershipService) {
         this.concertService = concertService;
+        this.vipGuestService = vipGuestService;
+        this.organizerOwnershipService = organizerOwnershipService;
     }
 
     @GetMapping
@@ -77,5 +87,18 @@ public class AdminConcertController {
     @PostMapping("/{id}/publish")
     ConcertDetailResponse publish(@PathVariable UUID id) {
         return concertService.publish(id);
+    }
+
+    @GetMapping("/{id}/vip-guests")
+    List<VipGuestResponse> listVipGuests(@PathVariable UUID id) {
+        organizerOwnershipService.requireOwnedConcert(id);
+        return vipGuestService.getVipGuestsByConcert(id);
+    }
+
+    @DeleteMapping("/{id}/vip-guests/{guestId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void removeVipGuest(@PathVariable UUID id, @PathVariable UUID guestId) {
+        organizerOwnershipService.requireOwnedConcert(id);
+        vipGuestService.deleteVipGuest(id, guestId);
     }
 }

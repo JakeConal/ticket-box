@@ -58,6 +58,42 @@ public class VipGuestService {
                 .toList();
     }
 
+    public List<VipGuestResponse> getVipGuestsByConcert(UUID concertId) {
+        return jdbcTemplate.query("""
+                select id,
+                       concert_id,
+                       name,
+                       phone_normalized,
+                       sponsor,
+                       zone,
+                       entered,
+                       entered_at
+                from vip_guests
+                where concert_id = ?
+                  and active = true
+                order by name asc
+                limit 500
+                """, this::mapGuestRow, concertId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public void deleteVipGuest(UUID concertId, UUID guestId) {
+        int updated = jdbcTemplate.update("""
+                update vip_guests
+                set active = false,
+                    updated_at = ?
+                where id = ?
+                  and concert_id = ?
+                  and active = true
+                """, Timestamp.from(Instant.now()), guestId, concertId);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "VIP guest not found");
+        }
+    }
+
     @Transactional
     public VipGuestEnterResponse enter(UUID guestId) {
         Instant now = Instant.now();

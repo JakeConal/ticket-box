@@ -20,7 +20,10 @@ import {
   toTicketTypeRequest,
   uploadArtistPdf,
   VipImportSummary,
-  triggerVipImport
+  triggerVipImport,
+  VipGuestResponse,
+  getVipGuests,
+  deleteVipGuest
 } from "../../lib/admin-api";
 import { ui } from "../../components/ui";
 
@@ -63,6 +66,13 @@ export default function AdminDashboardPage() {
   const [saving, setSaving] = useState(false);
   const [vipSummaries, setVipSummaries] = useState<VipImportSummary[]>([]);
   const [importing, setImporting] = useState(false);
+  const [vipGuests, setVipGuests] = useState<VipGuestResponse[]>([]);
+  const [vipSearchQuery, setVipSearchQuery] = useState("");
+  const [vipImportMessage, setVipImportMessage] = useState("");
+  const [vipImportError, setVipImportError] = useState("");
+  const [vipDirectoryMessage, setVipDirectoryMessage] = useState("");
+  const [vipDirectoryError, setVipDirectoryError] = useState("");
+
 
   useEffect(() => {
     const session = readSession();
@@ -117,12 +127,13 @@ export default function AdminDashboardPage() {
   async function loadWorkspace(concertId: string) {
     setError("");
     try {
-      const [nextDetail, nextStats, nextBio, nextConflicts, nextRefunds] = await Promise.all([
+      const [nextDetail, nextStats, nextBio, nextConflicts, nextRefunds, nextVips] = await Promise.all([
         adminGet<ConcertDetail>(`/api/concerts/${concertId}`),
         adminGet<ConcertStats>(`/api/admin/concerts/${concertId}/stats`),
         adminGet<ArtistBio>(`/api/admin/concerts/${concertId}/artist-bio`),
         adminGet<CheckinConflict[]>(`/api/admin/concerts/${concertId}/checkin-conflicts`),
-        adminGet<AdminOrder[]>(`/api/admin/orders?concertId=${concertId}&status=REFUND_REQUIRED`)
+        adminGet<AdminOrder[]>(`/api/admin/orders?concertId=${concertId}&status=REFUND_REQUIRED`),
+        getVipGuests(concertId)
       ]);
       setDetail(nextDetail);
       setForm(fromDetail(nextDetail));
@@ -131,6 +142,12 @@ export default function AdminDashboardPage() {
       setBioDraft(nextBio.artistBioDraft || "");
       setConflicts(nextConflicts);
       setRefunds(nextRefunds);
+      setVipGuests(nextVips);
+      setVipSearchQuery("");
+      setVipImportMessage("");
+      setVipImportError("");
+      setVipDirectoryMessage("");
+      setVipDirectoryError("");
       setTicketForm(EMPTY_TICKET);
     } catch (caught) {
       handleError(caught);
@@ -287,22 +304,69 @@ export default function AdminDashboardPage() {
 
   async function handleVipImport() {
     setImporting(true);
-    setMessage("");
-    setError("");
+    setVipImportMessage("");
+    setVipImportError("");
     try {
       const summaries = await triggerVipImport();
       setVipSummaries(summaries);
       if (summaries.length === 0) {
-        setMessage("No new files found to process.");
+        setVipImportMessage("No new files found to process.");
       } else {
-        setMessage(`Successfully processed ${summaries.length} import file(s).`);
+        setVipImportMessage(`Successfully processed ${summaries.length} import file(s).`);
+      }
+      setTimeout(() => {
+        setVipImportMessage("");
+      }, 5000);
+      if (detail?.id) {
+        const nextVips = await getVipGuests(detail.id);
+        setVipGuests(nextVips);
       }
     } catch (caught) {
-      handleError(caught);
+      setVipImportError(caught instanceof Error ? caught.message : String(caught));
+      setTimeout(() => {
+        setVipImportError("");
+      }, 5000);
     } finally {
       setImporting(false);
     }
   }
+
+  async function handleDeleteVip(vipId: string, vipName: string) {
+    if (!detail?.id) return;
+    if (!window.confirm(`Are you sure you want to remove VIP guest "${vipName}"?`)) {
+      return;
+    }
+    setVipDirectoryMessage("");
+    setVipDirectoryError("");
+    try {
+      await deleteVipGuest(detail.id, vipId);
+      const nextVips = await getVipGuests(detail.id);
+      setVipGuests(nextVips);
+      setVipDirectoryMessage(`Successfully removed VIP guest "${vipName}".`);
+      setTimeout(() => {
+        setVipDirectoryMessage("");
+      }, 5000);
+    } catch (caught) {
+      setVipDirectoryError(caught instanceof Error ? caught.message : String(caught));
+      setTimeout(() => {
+        setVipDirectoryError("");
+      }, 5000);
+    }
+  }
+
+  const filteredVips = useMemo(() => {
+    const query = vipSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return vipGuests;
+    }
+    return vipGuests.filter(
+      (vip) =>
+        vip.name.toLowerCase().includes(query) ||
+        vip.phoneMasked.toLowerCase().includes(query) ||
+        (vip.sponsor && vip.sponsor.toLowerCase().includes(query)) ||
+        vip.zone.toLowerCase().includes(query)
+    );
+  }, [vipGuests, vipSearchQuery]);
 
   async function runAction(action: () => Promise<void>) {
     setSaving(true);
@@ -578,6 +642,8 @@ export default function AdminDashboardPage() {
                 >
                   {importing ? "Importing files..." : "Trigger VIP Import"}
                 </button>
+                {vipImportMessage ? <p className={`${ui.alertSuccess} mt-4`}>{vipImportMessage}</p> : null}
+                {vipImportError ? <p className={`${ui.alertError} mt-4`} role="alert">{vipImportError}</p> : null}
               </div>
 
               {vipSummaries.length > 0 ? (
@@ -623,6 +689,86 @@ export default function AdminDashboardPage() {
                 </div>
               ) : null}
             </section>
+
+            <section className={ui.panel} aria-labelledby="vip-directory-title">
+              <h3 className="text-xl font-bold" id="vip-directory-title">
+                VIP Guest Directory {detail ? `— ${detail.name}` : ""}
+              </h3>
+              <p className={`${ui.muted} mt-2`}>
+                Search and view the active list of imported VIP guests for this event.
+              </p>
+
+              {vipDirectoryMessage ? <p className={`${ui.alertSuccess} mt-4`}>{vipDirectoryMessage}</p> : null}
+              {vipDirectoryError ? <p className={`${ui.alertError} mt-4`} role="alert">{vipDirectoryError}</p> : null}
+              
+              <div className="mt-4">
+                <input
+                  className="w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950"
+                  placeholder="Filter by name, phone, sponsor, or zone..."
+                  type="text"
+                  value={vipSearchQuery}
+                  onChange={(e) => setVipSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="mt-5">
+                {filteredVips.length > 0 ? (
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Phone</th>
+                          <th>Sponsor</th>
+                          <th>Zone</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredVips.map((vip) => (
+                          <tr key={vip.id}>
+                            <td>{vip.name}</td>
+                            <td>{vip.phoneMasked}</td>
+                            <td>{vip.sponsor || "-"}</td>
+                            <td>
+                              <span className={ui.statusBadge}>{vip.zone}</span>
+                            </td>
+                            <td>
+                              {vip.entered ? (
+                                <span className="inline-flex border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                                  Entered {vip.enteredAt ? formatDate(vip.enteredAt) : ""}
+                                </span>
+                              ) : (
+                                <span className={ui.statusBadge}>
+                                  Registered
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                className={`${ui.dangerButton} ${ui.compactButton}`}
+                                type="button"
+                                onClick={() => handleDeleteVip(vip.id, vip.name)}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className={ui.muted}>
+                    {vipGuests.length === 0
+                      ? "No VIP guests have been registered for this event."
+                      : "No VIP guests match your search filter."}
+                  </p>
+                )}
+              </div>
+            </section>
+
 
 
             <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="conflicts-title">

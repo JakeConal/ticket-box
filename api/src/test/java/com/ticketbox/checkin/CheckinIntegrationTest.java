@@ -259,6 +259,93 @@ class CheckinIntegrationTest {
         assertThat(secondEnter.status()).isEqualTo(HttpStatus.CONFLICT.value());
     }
 
+    @Test
+    void organizerCanRetrieveVipGuestList() throws Exception {
+        UUID guestId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into vip_guests (
+                    id,
+                    concert_id,
+                    name,
+                    phone_normalized,
+                    sponsor,
+                    zone,
+                    active,
+                    entered,
+                    created_at,
+                    updated_at
+                )
+                values (?, ?, 'Nguyen Van A', '84901234567', 'Sponsor A', 'SVIP', true, false, ?, ?)
+                """, guestId, concertId, Instant.now(), Instant.now());
+
+        // 1. Authorized organizer (owner) fetches the VIP guest list
+        String ownerToken = tokenFor(organizer);
+        TestResponse response = getJson("/api/admin/concerts/" + concertId + "/vip-guests", ownerToken);
+        assertThat(response.status()).isEqualTo(HttpStatus.OK.value());
+        assertThat(response.json().size()).isEqualTo(1);
+        assertThat(response.json().get(0).get("name").asText()).isEqualTo("Nguyen Van A");
+        assertThat(response.json().get(0).get("phoneMasked").asText()).isEqualTo("*******4567");
+        assertThat(response.json().get(0).get("sponsor").asText()).isEqualTo("Sponsor A");
+        assertThat(response.json().get(0).get("zone").asText()).isEqualTo("SVIP");
+        assertThat(response.json().get(0).get("entered").asBoolean()).isFalse();
+
+        // 2. Unauthorized organizer (non-owner) tries to fetch and gets 403
+        User nonOwner = saveUser("non-owner@ticketbox.vn", UserRole.ORGANIZER);
+        String nonOwnerToken = tokenFor(nonOwner);
+        TestResponse unauthorizedResponse = getJson("/api/admin/concerts/" + concertId + "/vip-guests", nonOwnerToken);
+        assertThat(unauthorizedResponse.status()).isEqualTo(HttpStatus.FORBIDDEN.value());
+
+        // 3. Checker tries to fetch and gets 403
+        String checkerToken = tokenFor(checker);
+        TestResponse checkerResponse = getJson("/api/admin/concerts/" + concertId + "/vip-guests", checkerToken);
+        assertThat(checkerResponse.status()).isEqualTo(HttpStatus.FORBIDDEN.value());
+    }
+
+    @Test
+    void organizerCanDeleteVipGuest() throws Exception {
+        UUID guestId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into vip_guests (
+                    id,
+                    concert_id,
+                    name,
+                    phone_normalized,
+                    sponsor,
+                    zone,
+                    active,
+                    entered,
+                    created_at,
+                    updated_at
+                )
+                values (?, ?, 'Nguyen Van B', '84901234568', 'Sponsor B', 'SVIP', true, false, ?, ?)
+                """, guestId, concertId, Instant.now(), Instant.now());
+
+        String ownerToken = tokenFor(organizer);
+
+        // 1. Unauthorized organizer (non-owner) tries to delete and gets 403
+        User nonOwner = saveUser("non-owner-delete@ticketbox.vn", UserRole.ORGANIZER);
+        String nonOwnerToken = tokenFor(nonOwner);
+        TestResponse unauthorizedResponse = delete("/api/admin/concerts/" + concertId + "/vip-guests/" + guestId, nonOwnerToken);
+        assertThat(unauthorizedResponse.status()).isEqualTo(HttpStatus.FORBIDDEN.value());
+
+        // 2. Checker tries to delete and gets 403
+        String checkerToken = tokenFor(checker);
+        TestResponse checkerResponse = delete("/api/admin/concerts/" + concertId + "/vip-guests/" + guestId, checkerToken);
+        assertThat(checkerResponse.status()).isEqualTo(HttpStatus.FORBIDDEN.value());
+
+        // 3. Authorized organizer (owner) deletes the guest successfully (204 No Content)
+        TestResponse response = delete("/api/admin/concerts/" + concertId + "/vip-guests/" + guestId, ownerToken);
+        assertThat(response.status()).isEqualTo(HttpStatus.NO_CONTENT.value());
+
+        // Verify database state: active should be false
+        Boolean active = jdbcTemplate.queryForObject("select active from vip_guests where id = ?", Boolean.class, guestId);
+        assertThat(active).isFalse();
+
+        // 4. Authorized organizer tries to delete again and gets 404 (since it's already soft-deleted)
+        TestResponse deleteAgain = delete("/api/admin/concerts/" + concertId + "/vip-guests/" + guestId, ownerToken);
+        assertThat(deleteAgain.status()).isEqualTo(HttpStatus.NOT_FOUND.value());
+    }
+
     private TestResponse getJson(String path, String bearerToken) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url(path))).GET();
         addBearer(builder, bearerToken);
@@ -292,6 +379,12 @@ class CheckinIntegrationTest {
         if (bearerToken != null) {
             builder.header("Authorization", "Bearer " + bearerToken);
         }
+    }
+
+    private TestResponse delete(String path, String bearerToken) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url(path))).DELETE();
+        addBearer(builder, bearerToken);
+        return send(builder.build());
     }
 
     private UUID createPublishedConcert() {
