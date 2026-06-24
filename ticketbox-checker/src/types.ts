@@ -13,7 +13,7 @@ export type Assignment = {
 
 export type KeyBundle = {
   concertId: string;
-  keys: { kid: string; alg: string; publicKeyPem: string }[];
+  keys: { kid: string; alg?: string; algorithm?: string; publicKeyPem: string }[];
 };
 
 export type TicketPayload = {

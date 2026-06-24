@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TextInput, Pressable, FlatList } from "react-native";
+import { View, Text, TextInput, Pressable } from "react-native";
 import styles from "../styles";
 
 type VipTabProps = {
@@ -31,38 +31,34 @@ export function VipTab({
           <Text style={styles.primaryButtonText}>Search</Text>
         </Pressable>
       </View>
-      <FlatList
-        data={vipGuests}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.listItem}>
-            <View style={styles.listHeaderRow}>
-              <Text style={styles.listTitle}>{item.name}</Text>
-              {item.entered ? (
-                <View style={[styles.syncBadge, styles.syncBadgeConflict]}>
-                  <Text style={styles.syncBadgeText}>ADMITTED</Text>
-                </View>
-              ) : (
-                <View style={[styles.syncBadge, styles.syncBadgeSynced]}>
-                  <Text style={styles.syncBadgeText}>ACTIVE VIP</Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.listMeta, { marginBottom: 10 }]}>
-              Zone: <Text style={{ fontWeight: '700', color: '#0a0a0a' }}>{item.zone}</Text> • {item.entered ? "Admitted" : item.phoneMasked}
-            </Text>
-            <Pressable
-              disabled={item.entered}
-              style={[styles.smallButton, item.entered && styles.disabledButton]}
-              onPress={() => onEnter(item.id)}
-            >
-              <Text style={[styles.smallButtonText, item.entered && styles.disabledButtonText]}>
-                {item.entered ? "Admitted" : "Mark entered"}
-              </Text>
-            </Pressable>
+      {vipGuests.map((item) => (
+        <View key={item.id} style={styles.listItem}>
+          <View style={styles.listHeaderRow}>
+            <Text style={styles.listTitle}>{item.name}</Text>
+            {item.entered ? (
+              <View style={[styles.syncBadge, styles.syncBadgeConflict]}>
+                <Text style={styles.syncBadgeText}>ADMITTED</Text>
+              </View>
+            ) : (
+              <View style={[styles.syncBadge, styles.syncBadgeSynced]}>
+                <Text style={styles.syncBadgeText}>ACTIVE VIP</Text>
+              </View>
+            )}
           </View>
-        )}
-      />
+          <Text style={[styles.listMeta, { marginBottom: 10 }]}>
+            Zone: <Text style={{ fontWeight: '700', color: '#0a0a0a' }}>{item.zone}</Text> • {item.entered ? "Admitted" : item.phoneMasked}
+          </Text>
+          <Pressable
+            disabled={item.entered}
+            style={[styles.smallButton, item.entered && styles.disabledButton]}
+            onPress={() => onEnter(item.id)}
+          >
+            <Text style={[styles.smallButtonText, item.entered && styles.disabledButtonText]}>
+              {item.entered ? "Admitted" : "Mark entered"}
+            </Text>
+          </Pressable>
+        </View>
+      ))}
     </View>
   );
 }

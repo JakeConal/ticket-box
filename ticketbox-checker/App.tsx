@@ -231,7 +231,8 @@ export default function App() {
     }
     const header = JSON.parse(bytesToText(base64UrlToBytes(encodedHeader)));
     const key = keyBundle.keys.find((candidate) => candidate.kid === header.kid);
-    if (!key || key.alg !== "RS256") {
+    const alg = key?.algorithm ?? key?.alg;
+    if (!key || alg !== "RS256") {
       throw new Error("No matching RS256 public key.");
     }
     await verifyRs256(`${encodedHeader}.${encodedPayload}`, encodedSignature, key.publicKeyPem);
@@ -357,7 +358,11 @@ export default function App() {
       })
     });
     if (!response.ok) {
-      setStatus("Sync failed. Queue remains pending.");
+      let errText = "";
+      try {
+        errText = await response.text();
+      } catch {}
+      setStatus(`Sync failed (${response.status}): ${errText || "Queue remains pending."}`);
       return;
     }
     const body = await response.json();
@@ -514,7 +519,7 @@ export default function App() {
             ) : null}
           </View>
 
-          <StatusBanner status={status} />
+          <StatusBanner status={status} onClose={() => setStatus("")} />
 
           {!signedIn ? (
             <LoginScreen
