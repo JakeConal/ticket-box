@@ -129,3 +129,6 @@ build/
 # Gradle generated state
 .gradle/
 **/.gradle/
+
+# Ngrok
+ngrok/

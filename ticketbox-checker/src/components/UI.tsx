@@ -3,18 +3,28 @@ import { View, Text, TextInput, TextInputProps, Pressable } from "react-native";
 import styles from "../styles";
 import { Tab } from "../types";
 
-export function StatusBanner({ status }: { status: string | null }) {
+export function StatusBanner({ status, onClose }: { status: string | null; onClose?: () => void }) {
   if (!status) return null;
   return (
     <View style={[
       styles.statusBanner,
       (status.toLowerCase().includes("fail") || status.toLowerCase().includes("reject") || status.toLowerCase().includes("error") || status.toLowerCase().includes("conflict") || status.toLowerCase().includes("blocked")) && styles.statusBannerError,
-      (status.toLowerCase().includes("valid") || status.toLowerCase().includes("sync") || status.toLowerCase().includes("loaded") || status.toLowerCase().includes("stored")) && styles.statusBannerSuccess
+      (status.toLowerCase().includes("valid") || status.toLowerCase().includes("sync") || status.toLowerCase().includes("loaded") || status.toLowerCase().includes("stored")) && styles.statusBannerSuccess,
+      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }
     ]}>
       <Text style={[
         styles.statusText,
-        (status.toLowerCase().includes("valid") || status.toLowerCase().includes("sync") || status.toLowerCase().includes("loaded") || status.toLowerCase().includes("stored")) && styles.statusTextSuccess
+        (status.toLowerCase().includes("valid") || status.toLowerCase().includes("sync") || status.toLowerCase().includes("loaded") || status.toLowerCase().includes("stored")) && styles.statusTextSuccess,
+        { flex: 1, paddingRight: 8 }
       ]}>{status.toUpperCase()}</Text>
+      {onClose && (
+        <Pressable onPress={onClose} style={{ padding: 4 }}>
+          <Text style={[
+            { fontSize: 16, fontWeight: '800', color: '#0a0a0a' },
+            (status.toLowerCase().includes("valid") || status.toLowerCase().includes("sync") || status.toLowerCase().includes("loaded") || status.toLowerCase().includes("stored")) && { color: '#ffffff' }
+          ]}>×</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

@@ -1,11 +1,12 @@
 import { StatusBar } from "expo-status-bar";
-import { BarCodeScanner } from "expo-barcode-scanner";
+import { Camera } from "expo-camera";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   Text,
   View
 } from "react-native";
@@ -68,7 +69,7 @@ export default function App() {
     initDb();
     void hydrate();
     if (Platform.OS !== 'web') {
-      void BarCodeScanner.requestPermissionsAsync().then(({ status }) => {
+      void Camera.requestCameraPermissionsAsync().then(({ status }) => {
         setHasCameraPermission(status === "granted");
       });
     }
@@ -91,26 +92,31 @@ export default function App() {
 
   async function login() {
     setStatus("Signing in...");
-    const response = await fetch(`${getCleanUrl()}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
-    if (!response.ok) {
-      setStatus("Login failed.");
-      return;
+    try {
+      const response = await fetch(`${getCleanUrl()}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      if (!response.ok) {
+        setStatus("Login failed.");
+        return;
+      }
+      const body = await response.json();
+      const accessToken = body.accessToken ?? body.token ?? body.jwt;
+      if (!accessToken) {
+        setStatus("Login response did not include an access token.");
+        return;
+      }
+      await SecureStore.setItemAsync(API_BASE_STORAGE_KEY, getCleanUrl());
+      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, accessToken);
+      await SecureStore.setItemAsync(CONCERT_STORAGE_KEY, concertId);
+      setToken(accessToken);
+      await refreshCheckerState(accessToken);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Network/Login error: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const body = await response.json();
-    const accessToken = body.accessToken ?? body.token ?? body.jwt;
-    if (!accessToken) {
-      setStatus("Login response did not include an access token.");
-      return;
-    }
-    await SecureStore.setItemAsync(API_BASE_STORAGE_KEY, getCleanUrl());
-    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, accessToken);
-    await SecureStore.setItemAsync(CONCERT_STORAGE_KEY, concertId);
-    setToken(accessToken);
-    await refreshCheckerState(accessToken);
   }
 
   async function logout() {
@@ -129,22 +135,27 @@ export default function App() {
       return;
     }
     const headers = { Authorization: `Bearer ${nextToken}` };
-    const [bundleResponse, assignmentsResponse] = await Promise.all([
-      fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, { headers }),
-      fetch(`${getCleanUrl()}/api/checker/assignments?concertId=${concertId}`, { headers })
-    ]);
-    if (!bundleResponse.ok || !assignmentsResponse.ok) {
-      setStatus("Could not refresh checker keys or assignments.");
-      return;
+    try {
+      const [bundleResponse, assignmentsResponse] = await Promise.all([
+        fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, { headers }),
+        fetch(`${getCleanUrl()}/api/checker/assignments?concertId=${concertId}`, { headers })
+      ]);
+      if (!bundleResponse.ok || !assignmentsResponse.ok) {
+        setStatus("Could not refresh checker keys or assignments.");
+        return;
+      }
+      const nextBundle = await bundleResponse.json();
+      const assignmentBody = await assignmentsResponse.json();
+      const nextAssignments = assignmentBody.assignments ?? [];
+      await SecureStore.setItemAsync(KEY_BUNDLE_STORAGE_KEY, JSON.stringify(nextBundle));
+      await SecureStore.setItemAsync(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(nextAssignments));
+      setKeyBundle(nextBundle);
+      setAssignments(nextAssignments);
+      setStatus(`Loaded ${nextAssignments.length} assignment(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Refresh error: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const nextBundle = await bundleResponse.json();
-    const assignmentBody = await assignmentsResponse.json();
-    const nextAssignments = assignmentBody.assignments ?? [];
-    await SecureStore.setItemAsync(KEY_BUNDLE_STORAGE_KEY, JSON.stringify(nextBundle));
-    await SecureStore.setItemAsync(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(nextAssignments));
-    setKeyBundle(nextBundle);
-    setAssignments(nextAssignments);
-    setStatus(`Loaded ${nextAssignments.length} assignment(s).`);
   }
 
   async function handleScan({ data }: { data: string }) {
@@ -220,7 +231,8 @@ export default function App() {
     }
     const header = JSON.parse(bytesToText(base64UrlToBytes(encodedHeader)));
     const key = keyBundle.keys.find((candidate) => candidate.kid === header.kid);
-    if (!key || key.alg !== "RS256") {
+    const alg = key?.algorithm ?? key?.alg;
+    if (!key || alg !== "RS256") {
       throw new Error("No matching RS256 public key.");
     }
     await verifyRs256(`${encodedHeader}.${encodedPayload}`, encodedSignature, key.publicKeyPem);
@@ -346,7 +358,11 @@ export default function App() {
       })
     });
     if (!response.ok) {
-      setStatus("Sync failed. Queue remains pending.");
+      let errText = "";
+      try {
+        errText = await response.text();
+      } catch {}
+      setStatus(`Sync failed (${response.status}): ${errText || "Queue remains pending."}`);
       return;
     }
     const body = await response.json();
@@ -492,65 +508,67 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>TICKETBOX CHECKER</Text>
-          {signedIn ? (
-            <Pressable style={styles.logoutButton} onPress={logout}>
-              <Text style={styles.logoutButtonText}>LOGOUT</Text>
-            </Pressable>
-          ) : null}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+        <View style={[styles.container, { flex: 0, minHeight: '100%' }]}>
+          <View style={styles.header}>
+            <Text style={styles.title}>TICKETBOX CHECKER</Text>
+            {signedIn ? (
+              <Pressable style={styles.logoutButton} onPress={logout}>
+                <Text style={styles.logoutButtonText}>LOGOUT</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <StatusBanner status={status} onClose={() => setStatus("")} />
+
+          {!signedIn ? (
+            <LoginScreen
+              apiBaseUrl={apiBaseUrl}
+              setApiBaseUrl={setApiBaseUrl}
+              concertId={concertId}
+              setConcertId={setConcertId}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              onLogin={login}
+            />
+          ) : (
+            <>
+              <TabBar activeTab={tab} onTabSelect={setTab} />
+
+              {tab === "scan" && (
+                <ScanTab
+                  activeAssignment={activeAssignment}
+                  mockScanToken={mockScanToken}
+                  setMockScanToken={setMockScanToken}
+                  onScan={handleScan}
+                  hasCameraPermission={hasCameraPermission}
+                  onRefresh={() => refreshCheckerState()}
+                  onEmergencyActivate={activateStandbyLocally}
+                />
+              )}
+
+              {tab === "sync" && (
+                <SyncTab
+                  pending={pending}
+                  onFlush={flushQueue}
+                />
+              )}
+
+              {tab === "vip" && (
+                <VipTab
+                  vipQuery={vipQuery}
+                  setVipQuery={setVipQuery}
+                  onSearch={searchVip}
+                  vipGuests={vipGuests}
+                  onEnter={enterVip}
+                />
+              )}
+            </>
+          )}
         </View>
-
-        <StatusBanner status={status} />
-
-        {!signedIn ? (
-          <LoginScreen
-            apiBaseUrl={apiBaseUrl}
-            setApiBaseUrl={setApiBaseUrl}
-            concertId={concertId}
-            setConcertId={setConcertId}
-            email={email}
-            setEmail={setEmail}
-            password={password}
-            setPassword={setPassword}
-            onLogin={login}
-          />
-        ) : (
-          <>
-            <TabBar activeTab={tab} onTabSelect={setTab} />
-
-            {tab === "scan" && (
-              <ScanTab
-                activeAssignment={activeAssignment}
-                mockScanToken={mockScanToken}
-                setMockScanToken={setMockScanToken}
-                onScan={handleScan}
-                hasCameraPermission={hasCameraPermission}
-                onRefresh={() => refreshCheckerState()}
-                onEmergencyActivate={activateStandbyLocally}
-              />
-            )}
-
-            {tab === "sync" && (
-              <SyncTab
-                pending={pending}
-                onFlush={flushQueue}
-              />
-            )}
-
-            {tab === "vip" && (
-              <VipTab
-                vipQuery={vipQuery}
-                setVipQuery={setVipQuery}
-                onSearch={searchVip}
-                vipGuests={vipGuests}
-                onEnter={enterVip}
-              />
-            )}
-          </>
-        )}
-      </View>
+      </ScrollView>
       <StatusBar style="auto" />
     </SafeAreaView>
   );

@@ -34,10 +34,10 @@ export function LoginScreen({
         <Text style={styles.mutedText}>Enter the server address and your credentials to sync assignments.</Text>
         
         <View style={styles.form}>
-          <FormInput label="API Base URL" value={apiBaseUrl} onChangeText={setApiBaseUrl} placeholder="e.g. http://localhost:8088" />
-          <FormInput label="Concert ID" value={concertId} onChangeText={setConcertId} placeholder="Concert ID" />
-          <FormInput label="Checker Email" value={email} onChangeText={setEmail} placeholder="checker@example.com" autoCapitalize="none" />
-          <FormInput label="Password" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry />
+          <FormInput label="API Base URL" value={apiBaseUrl} onChangeText={setApiBaseUrl} placeholder="e.g. http://localhost:8088" autoCapitalize="none" autoCorrect={false} />
+          <FormInput label="Concert ID" value={concertId} onChangeText={setConcertId} placeholder="Concert ID" autoCapitalize="none" autoCorrect={false} />
+          <FormInput label="Checker Email" value={email} onChangeText={setEmail} placeholder="checker@example.com" autoCapitalize="none" autoCorrect={false} />
+          <FormInput label="Password" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry autoCapitalize="none" autoCorrect={false} />
           
           <Pressable style={styles.primaryButton} onPress={onLogin}>
             <Text style={styles.primaryButtonText}>Sign in & cache assignment</Text>

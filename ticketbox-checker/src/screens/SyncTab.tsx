@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Pressable, FlatList } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { LocalCheckin } from "../types";
 import styles from "../styles";
 
@@ -14,37 +14,33 @@ export function SyncTab({ pending, onFlush }: SyncTabProps) {
       <Pressable style={[styles.primaryButton, { marginBottom: 16 }]} onPress={onFlush}>
         <Text style={styles.primaryButtonText}>Flush pending sync</Text>
       </Pressable>
-      <FlatList
-        data={pending}
-        keyExtractor={(item) => item.client_scan_id}
-        renderItem={({ item }) => {
-          let badgeStyle = styles.syncBadgePending;
-          let badgeText = "PENDING";
-          if (item.sync_status === "SYNCED") {
-            badgeStyle = styles.syncBadgeSynced;
-            badgeText = "SYNCED";
-          } else if (item.sync_status === "CONFLICT") {
-            badgeStyle = styles.syncBadgeConflict;
-            badgeText = "CONFLICT";
-          }
+      {pending.map((item) => {
+        let badgeStyle = styles.syncBadgePending;
+        let badgeText = "PENDING";
+        if (item.sync_status === "SYNCED") {
+          badgeStyle = styles.syncBadgeSynced;
+          badgeText = "SYNCED";
+        } else if (item.sync_status === "CONFLICT") {
+          badgeStyle = styles.syncBadgeConflict;
+          badgeText = "CONFLICT";
+        }
 
-          return (
-            <View style={styles.listItem}>
-              <View style={styles.listHeaderRow}>
-                <Text style={styles.listTitle} numberOfLines={1} ellipsizeMode="middle">
-                  {item.ticket_id}
-                </Text>
-                <View style={[styles.syncBadge, badgeStyle]}>
-                  <Text style={styles.syncBadgeText}>{badgeText}</Text>
-                </View>
-              </View>
-              <Text style={styles.listMeta}>
-                Zone: <Text style={{ fontWeight: '700', color: '#0a0a0a' }}>{item.zone}</Text> • Scanned: {new Date(item.scanned_at).toLocaleTimeString()}
+        return (
+          <View key={item.client_scan_id} style={styles.listItem}>
+            <View style={styles.listHeaderRow}>
+              <Text style={styles.listTitle} numberOfLines={1} ellipsizeMode="middle">
+                {item.ticket_id}
               </Text>
+              <View style={[styles.syncBadge, badgeStyle]}>
+                <Text style={styles.syncBadgeText}>{badgeText}</Text>
+              </View>
             </View>
-          );
-        }}
-      />
+            <Text style={styles.listMeta}>
+              Zone: <Text style={{ fontWeight: '700', color: '#0a0a0a' }}>{item.zone}</Text> • Scanned: {new Date(item.scanned_at).toLocaleTimeString()}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
