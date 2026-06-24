@@ -221,7 +221,8 @@ class NotificationWorkflowTest {
                     status varchar(32) not null default 'PENDING',
                     attempts integer not null default 0,
                     created_at timestamp not null default now(),
-                    sent_at timestamp
+                    sent_at timestamp,
+                    last_attempt_at timestamp
                 )
                 """);
     }

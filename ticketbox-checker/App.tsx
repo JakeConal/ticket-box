@@ -287,6 +287,38 @@ export default function App() {
     if (!token) {
       return;
     }
+
+    // Flush pending audits first
+    const audits = db.getAllSync<any>(
+      "select * from local_assignment_audits where sync_status = 'PENDING_SYNC' order by created_at asc",
+      []
+    );
+    for (const audit of audits) {
+      try {
+        const response = await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            assignmentId: audit.assignment_id,
+            deviceId: audit.device_id,
+            action: audit.action,
+            reason: audit.reason
+          })
+        });
+        if (response.ok) {
+          db.runSync("update local_assignment_audits set sync_status = 'SYNCED' where id = ?", [
+            audit.id
+          ]);
+        }
+      } catch {
+        // Network is still down, pause audit sync
+        break;
+      }
+    }
+
     const rows = db.getAllSync<LocalCheckin>(
       "select * from local_checkins where sync_status = 'PENDING_SYNC' order by scanned_at asc",
       []
@@ -329,6 +361,42 @@ export default function App() {
     setStatus("Sync queue flushed.");
   }
 
+  async function syncOneAudit(auditId: string) {
+    if (!token) {
+      return;
+    }
+    const row = db.getFirstSync<any>(
+      "select * from local_assignment_audits where id = ?",
+      [auditId]
+    );
+    if (!row || row.sync_status !== "PENDING_SYNC") {
+      return;
+    }
+    try {
+      const response = await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          assignmentId: row.assignment_id,
+          deviceId: row.device_id,
+          action: row.action,
+          reason: row.reason
+        })
+      });
+      if (response.ok) {
+        db.runSync("update local_assignment_audits set sync_status = 'SYNCED' where id = ?", [
+          auditId
+        ]);
+        setStatus("Emergency audit logged on server.");
+      }
+    } catch {
+      // Offline, will retry when flushing
+    }
+  }
+
   async function activateStandbyLocally() {
     if (!standbyAssignment) {
       setStatus("No STANDBY assignment is cached.");
@@ -340,21 +408,30 @@ export default function App() {
     await SecureStore.setItemAsync(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(nextAssignments));
     setAssignments(nextAssignments);
     setStatus("Emergency local activation recorded. Sync audit when online.");
-    if (token) {
-      await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          assignmentId: standbyAssignment.id,
-          deviceId,
-          action: "EMERGENCY_LOCAL_ACTIVATED",
-          reason: "Local standby activation"
-        })
-      }).catch(() => undefined);
-    }
+
+    const auditId = makeId();
+    const createdAt = new Date().toISOString();
+    db.runSync(
+      `insert into local_assignment_audits (
+        id,
+        assignment_id,
+        device_id,
+        action,
+        reason,
+        created_at,
+        sync_status
+      ) values (?, ?, ?, ?, ?, ?, 'PENDING_SYNC')`,
+      [
+        auditId,
+        standbyAssignment.id,
+        deviceId,
+        "EMERGENCY_LOCAL_ACTIVATED",
+        "Local standby activation",
+        createdAt
+      ]
+    );
+
+    await syncOneAudit(auditId);
   }
 
   async function searchVip() {

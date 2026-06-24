@@ -43,6 +43,7 @@ public class TicketPurchaseService {
     private final PaymentGatewayManager paymentGatewayManager;
     private final OrderReleaseService orderReleaseService;
     private final TransactionTemplate transactionTemplate;
+    private final boolean isPostgres;
 
     public TicketPurchaseService(
             JdbcTemplate jdbcTemplate,
@@ -67,6 +68,14 @@ public class TicketPurchaseService {
         this.paymentGatewayManager = paymentGatewayManager;
         this.orderReleaseService = orderReleaseService;
         this.transactionTemplate = transactionTemplate;
+
+        String dbName;
+        try {
+            dbName = jdbcTemplate.execute((java.sql.Connection conn) -> conn.getMetaData().getDatabaseProductName());
+        } catch (Exception e) {
+            dbName = "PostgreSQL";
+        }
+        this.isPostgres = "PostgreSQL".equalsIgnoreCase(dbName);
     }
 
     public PurchaseResult purchase(String requestedIdempotencyKey, PurchaseRequest request) {
@@ -281,11 +290,19 @@ public class TicketPurchaseService {
     private void storeResult(String idempotencyKey, UUID orderId, PurchaseResponse response) {
         try {
             String result = objectMapper.writeValueAsString(response);
-            jdbcTemplate.update(
-                    "update idempotency_keys set order_id = ?, result = cast(? as jsonb) where \"key\" = ?",
-                    orderId,
-                    result,
-                    idempotencyKey);
+            if (isPostgres) {
+                jdbcTemplate.update(
+                        "update idempotency_keys set order_id = ?, result = cast(? as jsonb) where \"key\" = ?",
+                        orderId,
+                        result,
+                        idempotencyKey);
+            } else {
+                jdbcTemplate.update(
+                        "update idempotency_keys set order_id = ?, result = ? where \"key\" = ?",
+                        orderId,
+                        result,
+                        idempotencyKey);
+            }
             storeFastPathResult(idempotencyKey, result);
         } catch (Exception ex) {
             throw new IllegalStateException("Could not store idempotency result", ex);

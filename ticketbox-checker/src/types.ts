@@ -33,3 +33,13 @@ export type LocalCheckin = {
   zone: string;
   sync_status: "PENDING_SYNC" | "SYNCED" | "CONFLICT";
 };
+
+export type LocalAssignmentAudit = {
+  id: string;
+  assignment_id: string;
+  device_id: string;
+  action: string;
+  reason: string | null;
+  created_at: string;
+  sync_status: "PENDING_SYNC" | "SYNCED";
+};
