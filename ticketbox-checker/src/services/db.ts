@@ -1,8 +1,9 @@
 import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
-import { LocalCheckin } from "../types";
+import { LocalCheckin, LocalAssignmentAudit } from "../types";
 
 let inMemoryCheckins: LocalCheckin[] = [];
+let inMemoryAudits: LocalAssignmentAudit[] = [];
 
 function createWebMockDb() {
   return {
@@ -38,6 +39,23 @@ function createWebMockDb() {
         if (item) {
           item.sync_status = 'CONFLICT';
         }
+      } else if (sql.includes("insert into local_assignment_audits")) {
+        const [id, assignment_id, device_id, action, reason, created_at, sync_status] = params;
+        inMemoryAudits.push({
+          id,
+          assignment_id,
+          device_id,
+          action,
+          reason,
+          created_at,
+          sync_status: sync_status || "PENDING_SYNC"
+        });
+      } else if (sql.includes("update local_assignment_audits set sync_status = ?")) {
+        const [status, id] = params;
+        const item = inMemoryAudits.find(a => a.id === id);
+        if (item) {
+          item.sync_status = status;
+        }
       }
     },
     getFirstSync<T>(sql: string, params: any[]): T | null {
@@ -49,10 +67,19 @@ function createWebMockDb() {
         const [client_scan_id] = params;
         return (inMemoryCheckins.find(c => c.client_scan_id === client_scan_id) as unknown as T) || null;
       }
+      if (sql.includes("from local_assignment_audits") && sql.includes("where id = ?")) {
+        const [id] = params;
+        return (inMemoryAudits.find(a => a.id === id) as unknown as T) || null;
+      }
       return null;
     },
     getAllSync<T>(sql: string, params: any[]): T[] {
       if (sql.includes("sync_status = 'PENDING_SYNC'")) {
+        if (sql.includes("local_assignment_audits")) {
+          return (inMemoryAudits
+            .filter(a => a.sync_status === "PENDING_SYNC")
+            .sort((a, b) => a.created_at.localeCompare(b.created_at)) as unknown as T[]);
+        }
         return (inMemoryCheckins
           .filter(c => c.sync_status === "PENDING_SYNC")
           .sort((a, b) => a.scanned_at.localeCompare(b.scanned_at)) as unknown as T[]);
@@ -78,6 +105,17 @@ export function initDb() {
       gate_id text not null,
       lane_id text,
       zone text not null,
+      sync_status text not null
+    );
+  `);
+  db.execSync(`
+    create table if not exists local_assignment_audits (
+      id text primary key,
+      assignment_id text not null,
+      device_id text not null,
+      action text not null,
+      reason text,
+      created_at text not null,
       sync_status text not null
     );
   `);

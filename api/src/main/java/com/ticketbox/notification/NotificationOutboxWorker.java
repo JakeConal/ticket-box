@@ -43,7 +43,8 @@ public class NotificationOutboxWorker {
                 select id,
                        payload,
                        attempts,
-                       created_at
+                       created_at,
+                       last_attempt_at
                 from notification_outbox
                 where status in ('PENDING', 'FAILED')
                   and attempts < ?
@@ -68,9 +69,10 @@ public class NotificationOutboxWorker {
                 jdbcTemplate.update("""
                         update notification_outbox
                         set status = 'FAILED',
-                            attempts = attempts + 1
+                            attempts = attempts + 1,
+                            last_attempt_at = ?
                         where id = ?
-                        """, row.id());
+                        """, Timestamp.from(Instant.now()), row.id());
             }
         }
         return delivered;
@@ -81,7 +83,8 @@ public class NotificationOutboxWorker {
             return true;
         }
         long seconds = 1L << Math.min(row.attempts(), MAX_ATTEMPTS - 1);
-        return !row.createdAt().plus(Duration.ofSeconds(seconds)).isAfter(Instant.now());
+        Instant baseTime = row.lastAttemptAt() != null ? row.lastAttemptAt() : row.createdAt();
+        return !baseTime.plus(Duration.ofSeconds(seconds)).isAfter(Instant.now());
     }
 
     private NotificationEvent readEvent(String payload) {
@@ -93,13 +96,15 @@ public class NotificationOutboxWorker {
     }
 
     private OutboxRow mapRow(ResultSet rs, int rowNum) throws SQLException {
+        Timestamp lastAttemptTimestamp = rs.getTimestamp("last_attempt_at");
         return new OutboxRow(
                 rs.getObject("id", UUID.class),
                 rs.getString("payload"),
                 rs.getInt("attempts"),
-                rs.getTimestamp("created_at").toInstant());
+                rs.getTimestamp("created_at").toInstant(),
+                lastAttemptTimestamp == null ? null : lastAttemptTimestamp.toInstant());
     }
 
-    private record OutboxRow(UUID id, String payload, int attempts, Instant createdAt) {
+    private record OutboxRow(UUID id, String payload, int attempts, Instant createdAt, Instant lastAttemptAt) {
     }
 }

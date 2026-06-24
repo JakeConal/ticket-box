@@ -37,6 +37,9 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+    volumes:
+      - ./imports:/app/imports
+      - ./storage:/app/storage
 
   web:
     build:
