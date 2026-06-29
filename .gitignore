@@ -126,6 +126,10 @@ Thumbs.db
 dist/
 build/
 
+# Expo local state
+.expo/
+**/.expo/
+
 # Gradle generated state
 .gradle/
 **/.gradle/
