@@ -11,6 +11,7 @@ public class ArtistBioProperties {
 
     private String geminiApiKey = "";
     private String geminiModel = "gemini-2.0-flash";
+    private Duration geminiRequestTimeout = Duration.ofSeconds(30);
     private Path storageDir = Path.of("./storage/artist-pdfs");
     private long maxPdfBytes = 20L * 1024L * 1024L;
     private int maxPages = 20;
@@ -35,6 +36,14 @@ public class ArtistBioProperties {
 
     public void setGeminiModel(String geminiModel) {
         this.geminiModel = geminiModel;
+    }
+
+    public Duration getGeminiRequestTimeout() {
+        return geminiRequestTimeout;
+    }
+
+    public void setGeminiRequestTimeout(Duration geminiRequestTimeout) {
+        this.geminiRequestTimeout = geminiRequestTimeout;
     }
 
     public Path getStorageDir() {

@@ -23,7 +23,9 @@ public class GeminiArtistBioGenerator implements ArtistBioGenerator {
     public GeminiArtistBioGenerator(ArtistBioProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(properties.getGeminiRequestTimeout())
+                .build();
     }
 
     @Override
@@ -33,6 +35,7 @@ public class GeminiArtistBioGenerator implements ArtistBioGenerator {
         }
         try {
             HttpRequest request = HttpRequest.newBuilder(endpoint())
+                    .timeout(properties.getGeminiRequestTimeout())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody(cleanedPressKitText)))
                     .build();

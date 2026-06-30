@@ -29,6 +29,26 @@ NGINX_PORT=18088 docker compose up --build
 
 Flyway runs automatically when the API starts. The seed migrations create demo users, four published concerts, ticket types, seat maps, and published artist bios. A repeatable VIP CSV sample is stored in `import-samples/vip-guests-sample.csv`.
 
+## AI Artist Bio
+
+Live AI bio generation uses Google Gemini. Set `GEMINI_API_KEY` in your local `.env` before uploading a press-kit PDF from the organizer dashboard. Keep `.env` local-only and never commit API keys.
+
+Runtime knobs:
+
+- `GEMINI_API_KEY`: required for live generation.
+- `GEMINI_MODEL`: Gemini model name, default `gemini-2.0-flash`.
+- `GEMINI_REQUEST_TIMEOUT`: outbound Gemini request timeout, default `30s`.
+- `ARTIST_PDF_STORAGE_DIR`: local PDF storage path, default `./storage/artist-pdfs`.
+- `ARTIST_PDF_MAX_BYTES`: upload size limit in bytes, default `20971520` (20MB).
+- `ARTIST_PDF_MAX_PAGES`: page limit, default `20`.
+- `ARTIST_PDF_MAX_EXTRACTED_CHARS`: extracted text cap, default `40000`.
+- `ARTIST_BIO_MAX_PROMPT_CHARS`: prompt text cap, default `20000`.
+- `ARTIST_PDF_EXTRACTION_TIMEOUT`: PDF text extraction timeout, default `10s`.
+
+Use `import-samples/artist-press-kit-sample.pdf` for a small text-based demo upload. The file contains selectable text so the extraction path can produce source content for Gemini.
+
+If the API restarts while a bio is still `GENERATING`, the scheduled reaper marks it `FAILED` with `Generation interrupted - please retry` so organizers can safely upload again. Regeneration throttling is currently in-memory and intended for the single-instance local/demo stack; use a database-backed guard before running multiple API instances.
+
 ## Seed Accounts
 
 All seeded accounts use password `password`.
@@ -79,6 +99,14 @@ Compose build and runtime smoke:
 wsl docker compose build api web
 NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
 ```
+
+The default runtime smoke does not call Gemini. To include the AI bio lifecycle (`upload -> DRAFT -> public hidden -> publish -> public visible`), set `GEMINI_API_KEY` in local `.env` and run:
+
+```sh
+AI_BIO_SMOKE=true NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
+```
+
+This AI smoke uses the real Gemini service, so it requires outbound network access from the API container and available Gemini quota. Increase `AI_BIO_SMOKE_TIMEOUT_MS` if generation is slow.
 
 Queue/load simulation against a running stack:
 

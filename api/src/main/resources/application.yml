@@ -91,6 +91,7 @@ ticketbox:
   ai:
     gemini-api-key: ${GEMINI_API_KEY:}
     gemini-model: ${GEMINI_MODEL:gemini-2.0-flash}
+    gemini-request-timeout: ${GEMINI_REQUEST_TIMEOUT:30s}
     storage-dir: ${ARTIST_PDF_STORAGE_DIR:./storage/artist-pdfs}
     max-pdf-bytes: ${ARTIST_PDF_MAX_BYTES:20971520}
     max-pages: ${ARTIST_PDF_MAX_PAGES:20}
