@@ -180,6 +180,16 @@ class ApiBaselineContractIntegrationTest {
         assertThat(purchase.headers().firstValue("Location")).isPresent();
         assertThat(purchase.json().get("orderId").asText()).isNotBlank();
         assertThat(purchase.json().get("paymentUrl").asText()).contains("vnp_TxnRef=");
+
+        JsonNode pendingStats = getJson("/api/admin/concerts/" + concertId + "/stats", organizerToken).json();
+        assertThat(pendingStats.get("revenueTotal").decimalValue()).isZero();
+        assertThat(pendingStats.get("ticketsSoldPerType").get(0).get("soldQuantity").asLong()).isZero();
+
+        UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
+        jdbcTemplate.update("update orders set status = 'FAILED' where id = ?", orderId);
+        JsonNode failedStats = getJson("/api/admin/concerts/" + concertId + "/stats", organizerToken).json();
+        assertThat(failedStats.get("revenueTotal").decimalValue()).isZero();
+        assertThat(failedStats.get("ticketsSoldPerType").get(0).get("soldQuantity").asLong()).isZero();
     }
 
     private UUID createDraftConcert(String organizerToken, String name, String eventCode) throws Exception {

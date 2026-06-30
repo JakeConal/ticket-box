@@ -216,10 +216,13 @@ public class ConcertService {
                 where tt.concert_id = ?
                 """, Long.class, concertId);
         List<ConcertStatsResponse.TicketTypeSales> sales = jdbcTemplate.query("""
-                select tt.id, tt.name, tt.zone, coalesce(sum(oi.quantity), 0) as sold_quantity
+                select tt.id,
+                       tt.name,
+                       tt.zone,
+                       coalesce(sum(oi.quantity) filter (where o.status = 'PAID'), 0) as sold_quantity
                 from ticket_types tt
                 left join order_items oi on oi.ticket_type_id = tt.id
-                left join orders o on o.id = oi.order_id and o.status = 'PAID'
+                left join orders o on o.id = oi.order_id
                 where tt.concert_id = ?
                 group by tt.id, tt.name, tt.zone
                 order by tt.price asc
