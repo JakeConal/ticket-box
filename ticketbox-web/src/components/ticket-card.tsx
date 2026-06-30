@@ -11,7 +11,8 @@ export function TicketCard({ ticket }: { ticket: OrderTicket }) {
     <article className="flex flex-col border border-neutral-950 bg-white p-5">
       <div className="border-b border-neutral-300 pb-4">
         <p className={ui.eyebrow}>{ticket.zone}</p>
-        <h2 className="mt-2 text-xl font-bold">{ticket.ticketType}</h2>
+        <h2 className="mt-2 text-xl font-bold leading-tight">{ticket.concertName}</h2>
+        <p className="mt-2 text-sm font-semibold text-neutral-700">{ticket.ticketType}</p>
         <p className={`${ui.muted} mt-2`}>Issued {formatDate(ticket.issuedAt)}</p>
       </div>
       <div className="mt-5 grid aspect-square place-items-center border border-neutral-950 bg-white p-4">

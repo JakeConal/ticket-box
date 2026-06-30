@@ -80,6 +80,7 @@ export type OrderTicket = {
   id: string;
   orderId: string;
   ticketTypeId: string;
+  concertName: string;
   ticketType: string;
   zone: string;
   qrToken: string;

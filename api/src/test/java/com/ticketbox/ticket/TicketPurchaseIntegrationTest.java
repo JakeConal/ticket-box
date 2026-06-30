@@ -235,6 +235,7 @@ class TicketPurchaseIntegrationTest {
         assertThat(tickets.size()).isEqualTo(2);
         String firstQrToken = tickets.get(0).get("qrToken").asText();
         String secondQrToken = tickets.get(1).get("qrToken").asText();
+        assertThat(tickets.get(0).get("concertName").asText()).isEqualTo("SVIP Concert");
         assertThat(firstQrToken).isNotEqualTo(secondQrToken);
         assertThat(tickets.get(0).get("qrPngBase64").asText()).isNotBlank();
         assertThat(qrTokenService.verify(firstQrToken).orderId()).isEqualTo(orderId);

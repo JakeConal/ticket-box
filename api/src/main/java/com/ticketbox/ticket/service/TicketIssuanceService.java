@@ -106,12 +106,14 @@ public class TicketIssuanceService {
                 select t.id,
                        t.order_id,
                        t.ticket_type_id,
+                       c.name as concert_name,
                        tt.name as ticket_type,
                        tt.zone,
                        t.qr_token,
                        t.issued_at
                 from tickets t
                 join ticket_types tt on tt.id = t.ticket_type_id
+                join concerts c on c.id = tt.concert_id
                 where t.order_id = ?
                   and t.user_id = ?
                 order by t.issued_at, t.id
@@ -141,6 +143,7 @@ public class TicketIssuanceService {
                 rs.getObject("id", UUID.class),
                 rs.getObject("order_id", UUID.class),
                 rs.getObject("ticket_type_id", UUID.class),
+                rs.getString("concert_name"),
                 rs.getString("ticket_type"),
                 rs.getString("zone"),
                 qrToken,

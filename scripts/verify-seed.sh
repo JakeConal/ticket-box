@@ -23,6 +23,7 @@ assert_eq() {
 event_filter="'ATSH-HCM-2026','ATVNCG-HN-2026','EXSH-HCM-2026','CDDG-HN-2026'"
 
 assert_eq "4" "$(sql "select count(*) from concerts where status = 'PUBLISHED' and event_code in ($event_filter);")" "published concerts"
+assert_eq "4" "$(sql "select count(*) from concerts where (event_code, name) in (('ATSH-HCM-2026', 'Anh Trai Say Hi'), ('ATVNCG-HN-2026', 'Anh Trai Vượt Ngàn Chông Gai'), ('EXSH-HCM-2026', 'Em Xinh Say Hi'), ('CDDG-HN-2026', 'Chị Đẹp Đạp Gió Rẽ Sóng'));")" "concert names"
 assert_eq "4" "$(sql "select count(*) from concerts where event_code in ($event_filter) and artist_bio is not null and bio_status = 'PUBLISHED';")" "published bios"
 assert_eq "20" "$(sql "select count(*) from ticket_types where concert_id in (select id from concerts where event_code in ($event_filter));")" "ticket types"
 assert_eq "4" "$(sql "select count(*) from ticket_types where name = 'SVIP' and total_quantity = 200 and per_user_limit = 2 and price = 3500000.00;")" "SVIP baselines"

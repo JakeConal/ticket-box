@@ -7,6 +7,7 @@ public record OrderTicketResponse(
         UUID id,
         UUID orderId,
         UUID ticketTypeId,
+        String concertName,
         String ticketType,
         String zone,
         String qrToken,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConcertDetail,
   Session,
@@ -34,6 +34,7 @@ export default function ConcertDetailPage() {
   const [queueStatus, setQueueStatus] = useState<Awaited<ReturnType<typeof getQueueStatus>> | null>(null);
   const [pendingPurchase, setPendingPurchase] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const paymentWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
     void getSession().then((nextSession) => setSession(nextSession));
@@ -119,11 +120,24 @@ export default function ConcertDetailPage() {
         admissionToken
       });
       if (!result) {
+        paymentWindowRef.current?.close();
+        paymentWindowRef.current = null;
+        setSubmitting(false);
         return;
       }
       addOrderToHistory(result.orderId);
-      window.location.assign(result.paymentUrl);
+      const paymentWindow = paymentWindowRef.current;
+      if (!paymentWindow || paymentWindow.closed) {
+        setError("The payment tab was closed. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+      paymentWindow.location.replace(result.paymentUrl);
+      paymentWindowRef.current = null;
+      setSubmitting(false);
     } catch (caught) {
+      paymentWindowRef.current?.close();
+      paymentWindowRef.current = null;
       setError(caught instanceof Error ? caught.message : "Purchase failed");
       setPendingPurchase(false);
       setSubmitting(false);
@@ -139,6 +153,17 @@ export default function ConcertDetailPage() {
       router.push(`/login?next=${encodeURIComponent(`/concerts/${concertId}`)}`);
       return;
     }
+    const paymentWindow = window.open("about:blank", "_blank");
+    if (!paymentWindow) {
+      setError("Your browser blocked the payment tab. Allow pop-ups for this site and try again.");
+      return;
+    }
+    paymentWindow.opener = null;
+    paymentWindow.document.title = "TicketBox payment";
+    const paymentMessage = paymentWindow.document.createElement("p");
+    paymentMessage.textContent = "Preparing secure payment...";
+    paymentWindow.document.body.append(paymentMessage);
+    paymentWindowRef.current = paymentWindow;
     setSubmitting(true);
     setError("");
     setQueueStatus(null);
@@ -153,6 +178,8 @@ export default function ConcertDetailPage() {
       }
       await completePurchase(nextQueueStatus?.admissionToken || undefined);
     } catch (caught) {
+      paymentWindowRef.current?.close();
+      paymentWindowRef.current = null;
       setError(caught instanceof Error ? caught.message : "Purchase failed");
       setSubmitting(false);
     }
