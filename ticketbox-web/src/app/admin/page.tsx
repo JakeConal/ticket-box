@@ -74,8 +74,20 @@ const EMPTY_ASSIGNMENT: AssignmentForm = {
   state: "ACTIVE"
 };
 
+type AdminSection = "dashboard" | "concerts" | "checkers" | "vip" | "checkins" | "refunds";
+
+const ADMIN_SECTIONS: Array<{ id: AdminSection; label: string; description: string }> = [
+  { id: "dashboard", label: "Dashboard", description: "Operational overview" },
+  { id: "concerts", label: "Concerts", description: "Event setup and inventory" },
+  { id: "checkers", label: "Checkers & Gates", description: "Staff access and assignments" },
+  { id: "vip", label: "VIP Guests", description: "Imports and guest directory" },
+  { id: "checkins", label: "Check-ins", description: "Entry stats and conflicts" },
+  { id: "refunds", label: "Refunds", description: "Manual refund queue" }
+];
+
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [sessionEmail, setSessionEmail] = useState("");
   const [checkers, setCheckers] = useState<CheckerAccount[]>([]);
   const [checkerEmail, setCheckerEmail] = useState("");
@@ -127,6 +139,18 @@ export default function AdminDashboardPage() {
   }, [router]);
 
   useEffect(() => {
+    function syncSectionFromHash() {
+      const section = window.location.hash.slice(1);
+      if (ADMIN_SECTIONS.some((item) => item.id === section)) {
+        setActiveSection(section as AdminSection);
+      }
+    }
+    syncSectionFromHash();
+    window.addEventListener("hashchange", syncSectionFromHash);
+    return () => window.removeEventListener("hashchange", syncSectionFromHash);
+  }, []);
+
+  useEffect(() => {
     if (!selectedId) {
       return;
     }
@@ -147,6 +171,7 @@ export default function AdminDashboardPage() {
     () => concerts.find((concert) => concert.id === selectedId) ?? null,
     [concerts, selectedId]
   );
+  const activeSectionMeta = ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0];
 
   const filteredCheckers = useMemo(() => {
     const query = checkerSearch.trim().toLowerCase();
@@ -600,10 +625,53 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
+      <nav
+        aria-label="Admin sections"
+        className="sticky top-0 z-20 -mx-4 overflow-x-auto border-b border-neutral-950 bg-white px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+      >
+        <div className="flex min-w-max items-stretch gap-1 py-2">
+          {ADMIN_SECTIONS.map((section) => (
+            <a
+              aria-current={activeSection === section.id ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center border px-4 py-2 text-sm font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+                activeSection === section.id
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-950"
+              }`}
+              href={`#${section.id}`}
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+            >
+              {section.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       {message ? <p className={`${ui.alertSuccess} mt-6`}>{message}</p> : null}
       {error ? <p className={`${ui.alertError} mt-6`} role="alert">{error}</p> : null}
 
-      <section className={`${ui.panel} mt-6`} aria-labelledby="checker-accounts-title">
+      {activeSection === "dashboard" ? (
+        <section className={`${ui.panel} mt-6`} aria-labelledby="admin-workspaces-title">
+            <h2 className="text-xl font-bold" id="admin-workspaces-title">Workspaces</h2>
+            <p className={`${ui.muted} mt-2`}>Each workspace shows only the tools needed for that task.</p>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {ADMIN_SECTIONS.filter((section) => section.id !== "dashboard").map((section) => (
+                <a
+                  className="group min-h-24 border border-neutral-300 p-4 text-neutral-950 no-underline transition-colors hover:border-neutral-950 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                  href={`#${section.id}`}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                >
+                  <strong className="block text-base">{section.label}</strong>
+                  <span className="mt-2 block text-sm leading-6 text-neutral-600">{section.description}</span>
+                </a>
+              ))}
+            </div>
+        </section>
+      ) : null}
+
+      {activeSection === "checkers" ? <section className={`${ui.panel} mt-6`} aria-labelledby="checker-accounts-title">
         <div className={ui.sectionHeading}>
           <div>
             <p className={ui.eyebrow}>Access</p>
@@ -887,16 +955,16 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
-      </section>
+      </section> : null}
 
-      <section className="mt-6 grid gap-6 xl:grid-cols-[23rem_minmax(0,1fr)]">
+      {activeSection !== "dashboard" && activeSection !== "checkers" ? <section className="mt-6 grid gap-6 xl:grid-cols-[23rem_minmax(0,1fr)]">
         <aside className="border border-neutral-950 p-5" aria-label="Concert list">
           <div className={ui.sectionHeading}>
             <div>
-              <p className={ui.eyebrow}>Events</p>
-              <h2 className="mt-2 text-2xl font-bold">Concerts</h2>
+              <p className={ui.eyebrow}>Event context</p>
+              <h2 className="mt-2 text-2xl font-bold">Choose concert</h2>
             </div>
-            <button
+            {activeSection === "concerts" ? <button
               className={ui.secondaryButton}
               type="button"
               onClick={() => {
@@ -910,7 +978,7 @@ export default function AdminDashboardPage() {
               }}
             >
               New
-            </button>
+            </button> : null}
           </div>
           {loading ? <p className={`${ui.muted} mt-5`}>Loading concerts...</p> : null}
           <div className={`${ui.tableWrap} mt-5`}>
@@ -953,11 +1021,11 @@ export default function AdminDashboardPage() {
         <section aria-live="polite">
           <div className="flex flex-wrap items-end justify-between gap-5 border-b border-neutral-950 pb-5">
             <div>
-              <p className={ui.eyebrow}>{detail ? "Editing" : "Creating"}</p>
-              <h2 className="mt-2 text-3xl font-black">{detail?.name || "New concert"}</h2>
+              <p className={ui.eyebrow}>{activeSectionMeta.label}</p>
+              <h2 className="mt-2 text-3xl font-black">{detail?.name || (activeSection === "concerts" ? "New concert" : "Choose a concert")}</h2>
               {selectedConcert ? <p className={`${ui.muted} mt-2`}>{selectedConcert.venue}</p> : null}
             </div>
-            {detail ? (
+            {detail && activeSection === "concerts" ? (
               <div className={ui.actionRow}>
                 <button className={ui.secondaryButton} disabled={saving || detail.status !== "DRAFT"} type="button" onClick={publishConcert}>
                   Publish
@@ -970,7 +1038,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
-            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="concert-form-title">
+            {activeSection === "concerts" ? <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="concert-form-title">
               <h3 className="text-xl font-bold" id="concert-form-title">Concert details</h3>
               <form className={`${ui.form} mt-5 md:grid-cols-2`} onSubmit={submitConcert}>
                 <label>
@@ -1006,9 +1074,9 @@ export default function AdminDashboardPage() {
                   {saving ? "Saving..." : detail ? "Save concert" : "Create concert"}
                 </button>
               </form>
-            </section>
+            </section> : null}
 
-            <section className={ui.panel} aria-labelledby="ticket-form-title">
+            {activeSection === "concerts" ? <section className={ui.panel} aria-labelledby="ticket-form-title">
               <h3 className="text-xl font-bold" id="ticket-form-title">Ticket types</h3>
               <form className={`${ui.form} mt-5`} onSubmit={submitTicketType}>
                 <label>
@@ -1051,9 +1119,9 @@ export default function AdminDashboardPage() {
                   </button>
                 ))}
               </div>
-            </section>
+            </section> : null}
 
-            <section className={ui.panel} aria-labelledby="bio-title">
+            {activeSection === "concerts" ? <section className={ui.panel} aria-labelledby="bio-title">
               <h3 className="text-xl font-bold" id="bio-title">AI artist bio</h3>
               <div className="mt-5 flex items-center justify-between border-y border-neutral-300 py-3 text-sm">
                 <span>Status</span>
@@ -1079,9 +1147,9 @@ export default function AdminDashboardPage() {
                   Reject
                 </button>
               </div>
-            </section>
+            </section> : null}
 
-            <section className={ui.panel} aria-labelledby="stats-title">
+            {activeSection === "checkins" ? <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="stats-title">
               <h3 className="text-xl font-bold" id="stats-title">Stats</h3>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Metric label="Revenue" value={formatMoney(stats?.revenueTotal || 0)} />
@@ -1100,9 +1168,9 @@ export default function AdminDashboardPage() {
                   </div>
                 ))}
               </div>
-            </section>
+            </section> : null}
 
-            <section className={ui.panel} aria-labelledby="vip-import-title">
+            {activeSection === "vip" ? <section className={ui.panel} aria-labelledby="vip-import-title">
               <h3 className="text-xl font-bold" id="vip-import-title">VIP Guest Import</h3>
               <p className={`${ui.muted} mt-2`}>
                 Manually process pending VIP guest list CSV files from the server's import directory.
@@ -1163,9 +1231,9 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
               ) : null}
-            </section>
+            </section> : null}
 
-            <section className={ui.panel} aria-labelledby="vip-directory-title">
+            {activeSection === "vip" ? <section className={ui.panel} aria-labelledby="vip-directory-title">
               <h3 className="text-xl font-bold" id="vip-directory-title">
                 VIP Guest Directory {detail ? `— ${detail.name}` : ""}
               </h3>
@@ -1242,11 +1310,11 @@ export default function AdminDashboardPage() {
                   </p>
                 )}
               </div>
-            </section>
+            </section> : null}
 
 
 
-            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="conflicts-title">
+            {activeSection === "checkins" ? <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="conflicts-title">
               <h3 className="text-xl font-bold" id="conflicts-title">Check-in conflicts</h3>
               <div className={`${ui.tableWrap} mt-5`}>
                 <table className={ui.table}>
@@ -1279,9 +1347,9 @@ export default function AdminDashboardPage() {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section> : null}
 
-            <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="refunds-title">
+            {activeSection === "refunds" ? <section className={`${ui.panel} xl:col-span-2`} aria-labelledby="refunds-title">
               <h3 className="text-xl font-bold" id="refunds-title">Refunds</h3>
               <div className={`${ui.tableWrap} mt-5`}>
                 <table className={ui.table}>
@@ -1318,10 +1386,10 @@ export default function AdminDashboardPage() {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </section> : null}
           </div>
         </section>
-      </section>
+      </section> : null}
     </main>
   );
 
