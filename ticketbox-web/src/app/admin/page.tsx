@@ -957,68 +957,62 @@ export default function AdminDashboardPage() {
         </div>
       </section> : null}
 
-      {activeSection !== "dashboard" && activeSection !== "checkers" ? <section className="mt-6 grid gap-6 xl:grid-cols-[23rem_minmax(0,1fr)]">
-        <aside className="border border-neutral-950 p-5" aria-label="Concert list">
-          <div className={ui.sectionHeading}>
+      {activeSection !== "dashboard" && activeSection !== "checkers" ? <section className="mt-6">
+        <section className={ui.panel} aria-labelledby="event-context-title">
+          <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)_auto] lg:items-end">
             <div>
               <p className={ui.eyebrow}>Event context</p>
-              <h2 className="mt-2 text-2xl font-bold">Choose concert</h2>
+              <h2 className="mt-2 text-2xl font-bold" id="event-context-title">Choose concert</h2>
             </div>
-            {activeSection === "concerts" ? <button
-              className={ui.secondaryButton}
-              type="button"
-              onClick={() => {
-                setDetail(null);
-                setSelectedId("");
-                setForm(EMPTY_CONCERT);
-                setBio(null);
-                setStats(null);
-                setConflicts([]);
-                setRefunds([]);
-              }}
-            >
-              New
-            </button> : null}
-          </div>
-          {loading ? <p className={`${ui.muted} mt-5`}>Loading concerts...</p> : null}
-          <div className={`${ui.tableWrap} mt-5`}>
-            <table className={`${ui.table} min-w-[33rem]`}>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
+            <label className="grid gap-2 text-sm font-semibold text-neutral-950">
+              Current concert
+              <select
+                className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loading || concerts.length === 0}
+                value={selectedId}
+                onChange={(event) => setSelectedId(event.target.value)}
+              >
+                <option disabled value="">
+                  {activeSection === "concerts" && !detail ? "New concert draft" : "Select a concert"}
+                </option>
                 {concerts.map((concert) => (
-                  <tr
-                    className={concert.id === selectedId ? "bg-neutral-100" : ""}
-                    key={concert.id}
-                  >
-                    <td>
-                      <button className={ui.rowButton} type="button" onClick={() => setSelectedId(concert.id)}>
-                        <strong>{concert.name}</strong>
-                        <span>{concert.eventCode}</span>
-                      </button>
-                    </td>
-                    <td>
-                      <StatusBadge status={concert.status} />
-                    </td>
-                    <td>{formatDate(concert.eventDate)}</td>
-                  </tr>
+                  <option key={concert.id} value={concert.id}>
+                    {concert.name} — {concert.eventCode}
+                  </option>
                 ))}
-                {concerts.length === 0 ? (
-                  <tr>
-                    <td colSpan={3}>No concerts yet.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+              </select>
+            </label>
+            {activeSection === "concerts" ? (
+              <button
+                className={ui.secondaryButton}
+                type="button"
+                onClick={() => {
+                  setDetail(null);
+                  setSelectedId("");
+                  setForm(EMPTY_CONCERT);
+                  setBio(null);
+                  setStats(null);
+                  setConflicts([]);
+                  setRefunds([]);
+                }}
+              >
+                New concert
+              </button>
+            ) : null}
           </div>
-        </aside>
+          {loading ? <p className={`${ui.muted} mt-4`}>Loading concerts...</p> : null}
+          {!loading && concerts.length === 0 ? <p className={`${ui.muted} mt-4`}>No concerts yet.</p> : null}
+          {selectedConcert ? (
+            <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-neutral-300 pt-4 text-sm text-neutral-700">
+              <StatusBadge status={selectedConcert.status} />
+              <span><strong className="text-neutral-950">Code:</strong> {selectedConcert.eventCode}</span>
+              <span><strong className="text-neutral-950">Venue:</strong> {selectedConcert.venue}</span>
+              <span><strong className="text-neutral-950">Date:</strong> {formatDate(selectedConcert.eventDate)}</span>
+            </div>
+          ) : null}
+        </section>
 
-        <section aria-live="polite">
+        <section className="mt-6" aria-live="polite">
           <div className="flex flex-wrap items-end justify-between gap-5 border-b border-neutral-950 pb-5">
             <div>
               <p className={ui.eyebrow}>{activeSectionMeta.label}</p>
