@@ -29,7 +29,12 @@ fi
 
 docker compose ps
 sh scripts/verify-seed.sh
-docker run --rm --network ticket-box_default -v "$(pwd):/workspace" -w /workspace -e BASE_URL="$BASE_URL" node:22-alpine node scripts/final-smoke.mjs
+docker run --rm --network ticket-box_default -v "$(pwd):/workspace" -w /workspace \
+  -e BASE_URL="$BASE_URL" \
+  -e AI_BIO_SMOKE="${AI_BIO_SMOKE:-false}" \
+  -e AI_BIO_PRESS_KIT="${AI_BIO_PRESS_KIT:-import-samples/artist-press-kit-sample.pdf}" \
+  -e AI_BIO_SMOKE_TIMEOUT_MS="${AI_BIO_SMOKE_TIMEOUT_MS:-90000}" \
+  node:22-alpine node scripts/final-smoke.mjs
 docker run --rm --network ticket-box_default -v "$(pwd):/workspace" -w /workspace -e BASE_URL="$BASE_URL" -e LOAD_USERS="$LOAD_USERS" node:22-alpine node scripts/load-purchase-queue.mjs
 
 echo "OK runtime stack verified through ${PUBLIC_URL}"

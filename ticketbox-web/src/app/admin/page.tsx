@@ -171,6 +171,11 @@ export default function AdminDashboardPage() {
     () => concerts.find((concert) => concert.id === selectedId) ?? null,
     [concerts, selectedId]
   );
+  const bioStatus = bio?.bioStatus || "Not started";
+  const hasPublicBio = Boolean((bio?.publicArtistBio || detail?.artistBio || "").trim());
+  const bioGenerating = bio?.bioStatus === "GENERATING";
+  const bioFailed = bio?.bioStatus === "FAILED";
+  const bioStatusLabel = bioGenerating ? "PROCESSING" : bioStatus;
   const activeSectionMeta = ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0];
 
   const filteredCheckers = useMemo(() => {
@@ -480,6 +485,7 @@ export default function AdminDashboardPage() {
       });
       setBio(nextBio);
       setBioDraft("");
+      await loadWorkspace(detail.id);
       setMessage("Artist bio rejected.");
     });
   }
@@ -1117,18 +1123,48 @@ export default function AdminDashboardPage() {
 
             {activeSection === "concerts" ? <section className={ui.panel} aria-labelledby="bio-title">
               <h3 className="text-xl font-bold" id="bio-title">AI artist bio</h3>
-              <div className="mt-5 flex items-center justify-between border-y border-neutral-300 py-3 text-sm">
-                <span>Status</span>
-                <strong>{bio?.bioStatus || "Not started"}</strong>
+              <div className="mt-5 grid gap-3 border-y border-neutral-300 py-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Status</span>
+                  <span className={`${ui.statusBadge} min-w-[7.75rem] items-center justify-center`}>
+                    {bioGenerating ? (
+                      <>
+                        {bioStatusLabel}
+                        <AnimatedEllipsis />
+                      </>
+                    ) : bioStatusLabel}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Public bio</span>
+                  <strong>{hasPublicBio ? "Published" : "Not published"}</strong>
+                </div>
               </div>
-              {bio?.bioError ? <p className={`${ui.alertError} mt-4`}>{bio.bioError}</p> : null}
+              {bioGenerating ? (
+                <div className="mt-4 border border-neutral-950 bg-neutral-50 px-4 py-3 text-sm text-neutral-900" role="status" aria-live="polite">
+                  <p className="font-semibold">
+                    Generating draft
+                    <AnimatedEllipsis />
+                  </p>
+                  <p className="mt-1 text-neutral-600">
+                    {hasPublicBio ? "A public bio is already live while the new draft is processing." : "No public bio is live yet while the first draft is processing."}
+                  </p>
+                </div>
+              ) : null}
+              {bio?.bioError ? (
+                <div className={`${ui.alertError} mt-4`} role="alert">
+                  <p>{bio.bioError}</p>
+                  {bioFailed ? <p className="mt-2 font-normal">Retry with a text-based PDF press kit, or try again when the AI service is available.</p> : null}
+                </div>
+              ) : null}
               <label className="mt-4 grid gap-2 border border-dashed border-neutral-500 p-4 text-sm font-medium text-neutral-950">
                 Press kit PDF
+                <span className="font-normal text-neutral-600">Upload a PDF press kit with selectable text. Image-only scans may fail. Maximum size: 20MB.</span>
                 <input accept="application/pdf,.pdf" disabled={!detail || saving} type="file" onChange={handlePdfUpload} />
               </label>
               <label className={`${ui.form} mt-4`}>
                 Draft text
-                <textarea value={bioDraft} onChange={(event) => setBioDraft(event.target.value)} />
+                <textarea placeholder={bioGenerating ? "Generating draft..." : undefined} value={bioDraft} onChange={(event) => setBioDraft(event.target.value)} />
               </label>
               <div className={`${ui.actionRow} mt-4`}>
                 <button className={ui.secondaryButton} disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={saveBioDraft}>
@@ -1407,6 +1443,19 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function AnimatedEllipsis() {
+  const [dotCount, setDotCount] = useState(1);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setDotCount((current) => current === 3 ? 1 : current + 1);
+    }, 450);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <span aria-hidden="true" className="inline-block w-4 text-left">{".".repeat(dotCount)}</span>;
 }
 
 function fromDetail(detail: ConcertDetail): ConcertForm {

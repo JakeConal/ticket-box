@@ -243,6 +243,10 @@ class ArtistBioIntegrationTest {
                 "select bio_status from concerts where id = ?",
                 String.class,
                 concertId)).isEqualTo("FAILED");
+        assertThat(jdbcTemplate.queryForObject(
+                "select bio_error from concerts where id = ?",
+                String.class,
+                concertId)).isEqualTo("Generation interrupted - please retry");
     }
 
     private void awaitBioStatus(UUID concertId, BioStatus status) throws InterruptedException {

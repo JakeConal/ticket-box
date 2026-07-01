@@ -67,7 +67,7 @@ public class ArtistBioProcessor {
                 }
             }
         }
-        throw last == null ? new ArtistBioGenerationException("Gemini generation failed", false) : last;
+        throw last == null ? new ArtistBioGenerationException("AI generation failed", false) : last;
     }
 
     private void sleepBackoff(int attempt) {
@@ -75,7 +75,7 @@ public class ArtistBioProcessor {
             Thread.sleep((long) Math.pow(2, attempt) * 250L);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new ArtistBioGenerationException("Gemini retry interrupted", false, ex);
+            throw new ArtistBioGenerationException("AI retry interrupted", false, ex);
         }
     }
 }

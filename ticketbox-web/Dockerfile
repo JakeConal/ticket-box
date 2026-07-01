@@ -5,12 +5,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY ticketbox-web/package.json ./ticketbox-web/package.json
 RUN pnpm install --filter ticketbox-web... --frozen-lockfile
 
-FROM node:22-alpine AS build
+FROM deps AS build
 WORKDIR /workspace
-RUN corepack enable
-COPY --from=deps /workspace/node_modules ./node_modules
-COPY --from=deps /workspace/ticketbox-web/node_modules ./ticketbox-web/node_modules
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY ticketbox-web ./ticketbox-web
 RUN pnpm --filter ticketbox-web build
 

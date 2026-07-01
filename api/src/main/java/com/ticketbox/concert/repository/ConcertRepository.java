@@ -27,7 +27,7 @@ public interface ConcertRepository extends JpaRepository<Concert, UUID> {
     @Query("""
             update Concert c
             set c.bioStatus = com.ticketbox.concert.model.BioStatus.FAILED,
-                c.bioError = 'AI generation interrupted - please upload again',
+                c.bioError = 'Generation interrupted - please retry',
                 c.updatedAt = :updatedAt
             where c.bioStatus = com.ticketbox.concert.model.BioStatus.GENERATING
               and c.updatedAt < :cutoff
