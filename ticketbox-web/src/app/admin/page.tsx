@@ -109,6 +109,7 @@ export default function AdminDashboardPage() {
   const hasPublicBio = Boolean((bio?.publicArtistBio || detail?.artistBio || "").trim());
   const bioGenerating = bio?.bioStatus === "GENERATING";
   const bioFailed = bio?.bioStatus === "FAILED";
+  const bioStatusLabel = bioGenerating ? "PROCESSING" : bioStatus;
 
   async function loadConcerts() {
     setLoading(true);
@@ -588,7 +589,14 @@ export default function AdminDashboardPage() {
               <div className="mt-5 grid gap-3 border-y border-neutral-300 py-3 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <span>Status</span>
-                  <span className={ui.statusBadge}>{bioStatus}</span>
+                  <span className={`${ui.statusBadge} min-w-[7.75rem] items-center justify-center`}>
+                    {bioGenerating ? (
+                      <>
+                        {bioStatusLabel}
+                        <AnimatedEllipsis />
+                      </>
+                    ) : bioStatusLabel}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Public bio</span>
@@ -596,9 +604,15 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
               {bioGenerating ? (
-                <p className={`${ui.muted} mt-3`}>
-                  {hasPublicBio ? "A public bio is already live while the new draft is generating." : "No public bio is live yet while the first draft is generating."}
-                </p>
+                <div className="mt-4 border border-neutral-950 bg-neutral-50 px-4 py-3 text-sm text-neutral-900" role="status" aria-live="polite">
+                  <p className="font-semibold">
+                    Generating draft
+                    <AnimatedEllipsis />
+                  </p>
+                  <p className="mt-1 text-neutral-600">
+                    {hasPublicBio ? "A public bio is already live while the new draft is processing." : "No public bio is live yet while the first draft is processing."}
+                  </p>
+                </div>
               ) : null}
               {bio?.bioError ? (
                 <div className={`${ui.alertError} mt-4`} role="alert">
@@ -613,7 +627,7 @@ export default function AdminDashboardPage() {
               </label>
               <label className={`${ui.form} mt-4`}>
                 Draft text
-                <textarea value={bioDraft} onChange={(event) => setBioDraft(event.target.value)} />
+                <textarea placeholder={bioGenerating ? "Generating draft..." : undefined} value={bioDraft} onChange={(event) => setBioDraft(event.target.value)} />
               </label>
               <div className={`${ui.actionRow} mt-4`}>
                 <button className={ui.secondaryButton} disabled={!detail || saving || !bioDraft.trim()} type="button" onClick={saveBioDraft}>
@@ -892,6 +906,19 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function AnimatedEllipsis() {
+  const [dotCount, setDotCount] = useState(1);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setDotCount((current) => current === 3 ? 1 : current + 1);
+    }, 450);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <span aria-hidden="true" className="inline-block w-4 text-left">{".".repeat(dotCount)}</span>;
 }
 
 function fromDetail(detail: ConcertDetail): ConcertForm {

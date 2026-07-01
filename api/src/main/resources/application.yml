@@ -89,9 +89,10 @@ ticketbox:
       return-url: ${MOMO_RETURN_URL:http://localhost:8088/api/payments/momo/callback}
       ipn-url: ${MOMO_IPN_URL:${MOMO_RETURN_URL:http://localhost:8088/api/payments/momo/callback}}
   ai:
-    gemini-api-key: ${GEMINI_API_KEY:}
-    gemini-model: ${GEMINI_MODEL:gemini-2.0-flash}
-    gemini-request-timeout: ${GEMINI_REQUEST_TIMEOUT:30s}
+    nvidia-api-key: ${NVIDIA_API_KEY:}
+    nvidia-base-url: ${NVIDIA_BASE_URL:https://integrate.api.nvidia.com/v1}
+    nvidia-model: ${NVIDIA_MODEL:meta/llama-3.1-8b-instruct}
+    nvidia-request-timeout: ${NVIDIA_REQUEST_TIMEOUT:30s}
     storage-dir: ${ARTIST_PDF_STORAGE_DIR:./storage/artist-pdfs}
     max-pdf-bytes: ${ARTIST_PDF_MAX_BYTES:20971520}
     max-pages: ${ARTIST_PDF_MAX_PAGES:20}

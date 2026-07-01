@@ -9,9 +9,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "ticketbox.ai")
 public class ArtistBioProperties {
 
-    private String geminiApiKey = "";
-    private String geminiModel = "gemini-2.0-flash";
-    private Duration geminiRequestTimeout = Duration.ofSeconds(30);
+    private String nvidiaApiKey = "";
+    private String nvidiaBaseUrl = "https://integrate.api.nvidia.com/v1";
+    private String nvidiaModel = "meta/llama-3.1-8b-instruct";
+    private Duration nvidiaRequestTimeout = Duration.ofSeconds(30);
     private Path storageDir = Path.of("./storage/artist-pdfs");
     private long maxPdfBytes = 20L * 1024L * 1024L;
     private int maxPages = 20;
@@ -22,28 +23,36 @@ public class ArtistBioProperties {
     private Duration reaperThreshold = Duration.ofMinutes(5);
     private Duration regenerationMinInterval = Duration.ofMinutes(1);
 
-    public String getGeminiApiKey() {
-        return geminiApiKey;
+    public String getNvidiaApiKey() {
+        return nvidiaApiKey;
     }
 
-    public void setGeminiApiKey(String geminiApiKey) {
-        this.geminiApiKey = geminiApiKey;
+    public void setNvidiaApiKey(String nvidiaApiKey) {
+        this.nvidiaApiKey = nvidiaApiKey;
     }
 
-    public String getGeminiModel() {
-        return geminiModel;
+    public String getNvidiaBaseUrl() {
+        return nvidiaBaseUrl;
     }
 
-    public void setGeminiModel(String geminiModel) {
-        this.geminiModel = geminiModel;
+    public void setNvidiaBaseUrl(String nvidiaBaseUrl) {
+        this.nvidiaBaseUrl = nvidiaBaseUrl;
     }
 
-    public Duration getGeminiRequestTimeout() {
-        return geminiRequestTimeout;
+    public String getNvidiaModel() {
+        return nvidiaModel;
     }
 
-    public void setGeminiRequestTimeout(Duration geminiRequestTimeout) {
-        this.geminiRequestTimeout = geminiRequestTimeout;
+    public void setNvidiaModel(String nvidiaModel) {
+        this.nvidiaModel = nvidiaModel;
+    }
+
+    public Duration getNvidiaRequestTimeout() {
+        return nvidiaRequestTimeout;
+    }
+
+    public void setNvidiaRequestTimeout(Duration nvidiaRequestTimeout) {
+        this.nvidiaRequestTimeout = nvidiaRequestTimeout;
     }
 
     public Path getStorageDir() {

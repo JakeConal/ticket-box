@@ -31,13 +31,14 @@ Flyway runs automatically when the API starts. The seed migrations create demo u
 
 ## AI Artist Bio
 
-Live AI bio generation uses Google Gemini. Set `GEMINI_API_KEY` in your local `.env` before uploading a press-kit PDF from the organizer dashboard. Keep `.env` local-only and never commit API keys.
+Live AI bio generation uses NVIDIA's OpenAI-compatible endpoint. Set `NVIDIA_API_KEY` in your local `.env` before uploading a press-kit PDF from the organizer dashboard. Keep `.env` local-only and never commit API keys.
 
 Runtime knobs:
 
-- `GEMINI_API_KEY`: required for live generation.
-- `GEMINI_MODEL`: Gemini model name, default `gemini-2.0-flash`.
-- `GEMINI_REQUEST_TIMEOUT`: outbound Gemini request timeout, default `30s`.
+- `NVIDIA_API_KEY`: required for live generation.
+- `NVIDIA_BASE_URL`: NVIDIA OpenAI-compatible base URL, default `https://integrate.api.nvidia.com/v1`.
+- `NVIDIA_MODEL`: NVIDIA model name, default `meta/llama-3.1-8b-instruct`.
+- `NVIDIA_REQUEST_TIMEOUT`: outbound NVIDIA request timeout, default `30s`.
 - `ARTIST_PDF_STORAGE_DIR`: local PDF storage path, default `./storage/artist-pdfs`.
 - `ARTIST_PDF_MAX_BYTES`: upload size limit in bytes, default `20971520` (20MB).
 - `ARTIST_PDF_MAX_PAGES`: page limit, default `20`.
@@ -45,7 +46,7 @@ Runtime knobs:
 - `ARTIST_BIO_MAX_PROMPT_CHARS`: prompt text cap, default `20000`.
 - `ARTIST_PDF_EXTRACTION_TIMEOUT`: PDF text extraction timeout, default `10s`.
 
-Use `import-samples/artist-press-kit-sample.pdf` for a small text-based demo upload. The file contains selectable text so the extraction path can produce source content for Gemini.
+Use `import-samples/artist-press-kit-sample.pdf` for a small text-based demo upload. The file contains selectable text so the extraction path can produce source content for NVIDIA.
 
 If the API restarts while a bio is still `GENERATING`, the scheduled reaper marks it `FAILED` with `Generation interrupted - please retry` so organizers can safely upload again. Regeneration throttling is currently in-memory and intended for the single-instance local/demo stack; use a database-backed guard before running multiple API instances.
 
@@ -100,13 +101,13 @@ wsl docker compose build api web
 NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
 ```
 
-The default runtime smoke does not call Gemini. To include the AI bio lifecycle (`upload -> DRAFT -> public hidden -> publish -> public visible`), set `GEMINI_API_KEY` in local `.env` and run:
+The default runtime smoke does not call the AI provider. To include the AI bio lifecycle (`upload -> DRAFT -> public hidden -> publish -> public visible`), set `NVIDIA_API_KEY` in local `.env` and run:
 
 ```sh
 AI_BIO_SMOKE=true NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
 ```
 
-This AI smoke uses the real Gemini service, so it requires outbound network access from the API container and available Gemini quota. Increase `AI_BIO_SMOKE_TIMEOUT_MS` if generation is slow.
+This AI smoke uses the real NVIDIA service, so it requires outbound network access from the API container and available provider quota. Increase `AI_BIO_SMOKE_TIMEOUT_MS` if generation is slow.
 
 Queue/load simulation against a running stack:
 
@@ -125,5 +126,5 @@ The detailed lifecycle coverage lives in the backend integration tests:
 - `TicketPurchaseIntegrationTest`: purchase idempotency, payment callbacks, expiry, refund-required late success, refund marking, inventory release, notification outbox.
 - `QueueAdmissionIntegrationTest`: FIFO queue admission, admission-token enforcement, expiry, and rate bounds.
 - `CheckinIntegrationTest`: checker assignments, local/offline replay semantics, duplicate conflicts, gate/zone enforcement, emergency audit, organizer conflict visibility, and VIP gate entry.
-- `ArtistBioIntegrationTest`: PDF validation, Gemini mock handling, draft/public bio boundaries, failure storage, stale generation handling, and cache invalidation.
+- `ArtistBioIntegrationTest`: PDF validation, AI provider mock handling, draft/public bio boundaries, failure storage, stale generation handling, and cache invalidation.
 - `VipGuestImportServiceTest`: unknown event codes, partial row failure, duplicate/import idempotency, scoped deactivation, content-hash skip, archive movement, and entered preservation.
