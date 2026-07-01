@@ -82,7 +82,8 @@ public class AuthJwtUtil {
                 .expiration(Date.from(expiresAt))
                 .claim(TOKEN_TYPE, type)
                 .claim("email", user.getEmail())
-                .claim("role", user.getRole().name());
+                .claim("role", user.getRole().name())
+                .claim("authVersion", user.getAuthVersion());
         extraClaims.forEach(builder::claim);
         return builder.signWith(authKey).compact();
     }

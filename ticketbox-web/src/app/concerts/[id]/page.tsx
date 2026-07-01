@@ -20,6 +20,8 @@ import {
 } from "../../../lib/audience-api";
 import { ui } from "../../../components/ui";
 
+const PAYMENT_PROVIDER = "VNPAY" as const;
+
 export default function ConcertDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -29,7 +31,6 @@ export default function ConcertDetailPage() {
   const [availability, setAvailability] = useState<TicketAvailability[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [paymentProvider, setPaymentProvider] = useState<"VNPAY" | "MOMO">("VNPAY");
   const [error, setError] = useState("");
   const [queueStatus, setQueueStatus] = useState<Awaited<ReturnType<typeof getQueueStatus>> | null>(null);
   const [pendingPurchase, setPendingPurchase] = useState(false);
@@ -104,7 +105,7 @@ export default function ConcertDetailPage() {
         });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [concertId, pendingPurchase, queueStatus?.active, queueStatus?.admitted, selectedTicketId, quantity, paymentProvider]);
+  }, [concertId, pendingPurchase, queueStatus?.active, queueStatus?.admitted, selectedTicketId, quantity]);
 
   async function completePurchase(admissionToken?: string) {
     if (!selectedTicket) {
@@ -116,7 +117,7 @@ export default function ConcertDetailPage() {
       const result = await purchaseTickets({
         ticketTypeId: selectedTicket.id,
         quantity,
-        paymentProvider,
+        paymentProvider: PAYMENT_PROVIDER,
         admissionToken
       });
       if (!result) {
@@ -274,16 +275,22 @@ export default function ConcertDetailPage() {
               <div>
                 <span className="text-sm font-medium">Payment provider</span>
                 <div className="mt-2 grid grid-cols-2 border border-neutral-500" aria-label="Payment provider">
-                  {(["VNPAY", "MOMO"] as const).map((provider) => (
-                    <button
-                      className={paymentProvider === provider ? "min-h-11 bg-neutral-950 px-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950" : "min-h-11 px-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"}
-                      key={provider}
-                      type="button"
-                      onClick={() => setPaymentProvider(provider)}
-                    >
-                      {provider}
-                    </button>
-                  ))}
+                  <button
+                    aria-pressed="true"
+                    className="min-h-11 bg-neutral-950 px-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                    type="button"
+                  >
+                    VNPAY
+                  </button>
+                  <button
+                    className="min-h-11 cursor-not-allowed border-l border-neutral-500 bg-neutral-100 px-3 py-2 text-neutral-500"
+                    disabled
+                    title="MoMo is temporarily unavailable"
+                    type="button"
+                  >
+                    <span className="block text-sm font-semibold">MOMO</span>
+                    <span className="block text-xs">Unavailable</span>
+                  </button>
                 </div>
               </div>
               {queueStatus?.active ? (
