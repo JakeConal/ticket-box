@@ -144,6 +144,64 @@ class AuthIntegrationTest {
                 .isEqualTo(HttpStatus.FORBIDDEN.value());
     }
 
+    @Test
+    void organizerCanManageCheckerAccountsAndInvalidateTheirSessions() throws Exception {
+        saveUser("organizer@ticketbox.vn", UserRole.ORGANIZER);
+        String organizerToken = login("organizer@ticketbox.vn");
+
+        TestResponse created = postJsonWithBearer(
+                "/api/admin/checkers",
+                organizerToken,
+                Map.of("email", "New.Checker@TicketBox.vn", "password", "checkerPass123"));
+
+        assertThat(created.status()).isEqualTo(HttpStatus.CREATED.value());
+        assertThat(created.json().get("email").asText()).isEqualTo("new.checker@ticketbox.vn");
+        assertThat(created.json().get("enabled").asBoolean()).isTrue();
+        UUID checkerId = UUID.fromString(created.json().get("id").asText());
+
+        TestResponse listed = getWithBearer("/api/admin/checkers", organizerToken);
+        assertThat(listed.status()).isEqualTo(HttpStatus.OK.value());
+        assertThat(listed.json()).hasSize(1);
+
+        String firstCheckerToken = loginWithPassword("new.checker@ticketbox.vn", "checkerPass123");
+        assertThat(getWithBearer("/api/checker/test", firstCheckerToken).status())
+                .isEqualTo(HttpStatus.OK.value());
+
+        assertThat(putJsonWithBearer(
+                "/api/admin/checkers/" + checkerId + "/password",
+                organizerToken,
+                Map.of("password", "replacementPass123")).status())
+                .isEqualTo(HttpStatus.NO_CONTENT.value());
+        assertThat(getWithBearer("/api/checker/test", firstCheckerToken).status())
+                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
+        assertThat(postJson("/api/auth/login", Map.of(
+                "email", "new.checker@ticketbox.vn",
+                "password", "checkerPass123")).status())
+                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
+
+        String replacementToken = loginWithPassword("new.checker@ticketbox.vn", "replacementPass123");
+        assertThat(putJsonWithBearer(
+                "/api/admin/checkers/" + checkerId + "/status",
+                organizerToken,
+                Map.of("enabled", false)).json().get("enabled").asBoolean()).isFalse();
+        assertThat(getWithBearer("/api/checker/test", replacementToken).status())
+                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
+        assertThat(postJson("/api/auth/login", Map.of(
+                "email", "new.checker@ticketbox.vn",
+                "password", "replacementPass123")).status())
+                .isEqualTo(HttpStatus.UNAUTHORIZED.value());
+
+        assertThat(putJsonWithBearer(
+                "/api/admin/checkers/" + checkerId + "/status",
+                organizerToken,
+                Map.of("enabled", true)).json().get("enabled").asBoolean()).isTrue();
+        assertThat(loginWithPassword("new.checker@ticketbox.vn", "replacementPass123")).isNotBlank();
+
+        saveUser("audience-admin-check@ticketbox.vn", UserRole.AUDIENCE);
+        assertThat(getWithBearer("/api/admin/checkers", login("audience-admin-check@ticketbox.vn")).status())
+                .isEqualTo(HttpStatus.FORBIDDEN.value());
+    }
+
     private User saveUser(String email, UserRole role) {
         return userRepository.save(new User(
                 UUID.randomUUID(),
@@ -154,7 +212,11 @@ class AuthIntegrationTest {
     }
 
     private String login(String email) throws Exception {
-        return postJson("/api/auth/login", Map.of("email", email, "password", "password123"))
+        return loginWithPassword(email, "password123");
+    }
+
+    private String loginWithPassword(String email, String password) throws Exception {
+        return postJson("/api/auth/login", Map.of("email", email, "password", password))
                 .json()
                 .get("accessToken")
                 .asText();
@@ -172,6 +234,26 @@ class AuthIntegrationTest {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url(path)))
                 .header("Authorization", "Bearer " + accessToken)
                 .GET()
+                .build();
+        return send(request);
+    }
+
+    private TestResponse postJsonWithBearer(String path, String accessToken, Map<String, ?> body)
+            throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url(path)))
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        return send(request);
+    }
+
+    private TestResponse putJsonWithBearer(String path, String accessToken, Map<String, ?> body)
+            throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url(path)))
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .PUT(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                 .build();
         return send(request);
     }
@@ -198,6 +280,11 @@ class AuthIntegrationTest {
         TestAdminController testAdminController(OrganizerOwnershipService ownershipService) {
             return new TestAdminController(ownershipService);
         }
+
+        @Bean
+        TestCheckerController testCheckerController() {
+            return new TestCheckerController();
+        }
     }
 
     @RestController
@@ -218,6 +305,16 @@ class AuthIntegrationTest {
         @GetMapping("/concerts/{concertId}")
         Map<String, String> ownedConcert(@PathVariable UUID concertId) {
             ownershipService.requireOwnedConcert(concertId);
+            return Map.of("status", "ok");
+        }
+    }
+
+    @RestController
+    @RequestMapping("/api/checker/test")
+    static class TestCheckerController {
+
+        @GetMapping
+        Map<String, String> checkerOnly() {
             return Map.of("status", "ok");
         }
     }

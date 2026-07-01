@@ -43,6 +43,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Claims claims = authJwtUtil.parseAccessToken(header.substring(7));
             UUID userId = UUID.fromString(claims.getSubject());
             User user = userRepository.findById(userId).orElseThrow();
+            Object authVersionClaim = claims.get("authVersion");
+            int authVersion = authVersionClaim instanceof Number number ? number.intValue() : 0;
+            if (!user.isEnabled() || authVersion != user.getAuthVersion()) {
+                throw new IllegalArgumentException("User session is no longer active");
+            }
             UserPrincipal principal = UserPrincipal.from(user);
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(

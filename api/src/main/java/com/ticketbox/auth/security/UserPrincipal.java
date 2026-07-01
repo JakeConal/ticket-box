@@ -14,6 +14,7 @@ public record UserPrincipal(
         String email,
         String password,
         UserRole role,
+        boolean enabled,
         List<GrantedAuthority> authorities) implements UserDetails {
 
     public static UserPrincipal from(User user) {
@@ -22,6 +23,7 @@ public record UserPrincipal(
                 user.getEmail(),
                 user.getPasswordHash(),
                 user.getRole(),
+                user.isEnabled(),
                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
     }
 
@@ -38,5 +40,10 @@ public record UserPrincipal(
     @Override
     public String getUsername() {
         return email;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return enabled;
     }
 }

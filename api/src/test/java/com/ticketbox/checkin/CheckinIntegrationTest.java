@@ -130,6 +130,47 @@ class CheckinIntegrationTest {
     }
 
     @Test
+    void organizerCanListAndCreateGateAssignmentsForEnabledCheckers() throws Exception {
+        String organizerToken = tokenFor(organizer);
+
+        TestResponse existing = getJson("/api/admin/checkers/" + checker.getId() + "/assignments", organizerToken);
+        assertThat(existing.status()).isEqualTo(HttpStatus.OK.value());
+        assertThat(existing.json().size()).isEqualTo(1);
+        assertThat(existing.json().get(0).get("gateId").asText()).isEqualTo("GATE-A");
+
+        TestResponse created = postJson(
+                "/api/admin/concerts/" + concertId + "/checker-assignments",
+                organizerToken,
+                Map.of(
+                        "checkerId", checker.getId(),
+                        "deviceId", "device-2",
+                        "gateId", "GATE-B",
+                        "laneId", "LANE-2",
+                        "allowedZones", new String[] {"VIP"},
+                        "state", "STANDBY"));
+
+        assertThat(created.status())
+                .withFailMessage("Expected assignment creation to return 201, got %s with body %s",
+                        created.status(), created.json())
+                .isEqualTo(HttpStatus.CREATED.value());
+        assertThat(created.json().get("gateId").asText()).isEqualTo("GATE-B");
+        assertThat(created.json().get("state").asText()).isEqualTo("STANDBY");
+
+        checker.setEnabled(false);
+        userRepository.save(checker);
+        TestResponse disabled = postJson(
+                "/api/admin/concerts/" + concertId + "/checker-assignments",
+                organizerToken,
+                Map.of(
+                        "checkerId", checker.getId(),
+                        "gateId", "GATE-C",
+                        "allowedZones", new String[] {"SVIP"},
+                        "state", "ACTIVE"));
+
+        assertThat(disabled.status()).isEqualTo(HttpStatus.CONFLICT.value());
+    }
+
+    @Test
     void batchCheckinIsIdempotentAndRecordsTicketConflicts() throws Exception {
         String token = tokenFor(checker);
         UUID firstScanId = UUID.randomUUID();

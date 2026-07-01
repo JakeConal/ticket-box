@@ -62,6 +62,7 @@ class MigrationInvariantTest {
         String seedAccounts = migration("V17__seed_auth_accounts.sql");
         String demoSeed = migration("V18__seed_demo_data.sql");
         String assignmentSeed = migration("V19__seed_checker_assignments.sql");
+        String checkerAccountStatus = migration("V22__add_checker_account_status.sql");
 
         assertThat(concerts).contains(
                 "artist_bio text",
@@ -105,6 +106,10 @@ class MigrationInvariantTest {
                 "checker2-device",
                 "active",
                 "standby");
+        assertThat(checkerAccountStatus).contains(
+                "enabled boolean not null default true",
+                "auth_version integer not null default 0",
+                "idx_users_role_enabled_created_at");
     }
 
     private String migration(String fileName) throws Exception {
