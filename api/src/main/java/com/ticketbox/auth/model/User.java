@@ -26,6 +26,12 @@ public class User {
     @Column(nullable = false)
     private UserRole role;
 
+    @Column(nullable = false)
+    private boolean enabled = true;
+
+    @Column(name = "auth_version", nullable = false)
+    private int authVersion;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -37,6 +43,8 @@ public class User {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
+        this.enabled = true;
+        this.authVersion = 0;
         this.createdAt = createdAt;
     }
 
@@ -54,6 +62,26 @@ public class User {
 
     public UserRole getRole() {
         return role;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public int getAuthVersion() {
+        return authVersion;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public void invalidateSessions() {
+        this.authVersion++;
     }
 
     public Instant getCreatedAt() {

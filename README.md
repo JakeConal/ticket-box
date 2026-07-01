@@ -50,7 +50,7 @@ Seed event codes are `ATSH-HCM-2026`, `ATVNCG-HN-2026`, `EXSH-HCM-2026`, and `CD
 | --- | --- |
 | Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh` |
 | Public concerts | `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` |
-| Organizer admin | `/api/admin/concerts/**`, `/api/admin/orders/**`, `/api/admin/vip-imports` |
+| Organizer admin | `/api/admin/concerts/**`, `/api/admin/orders/**`, `/api/admin/checkers/**`, `/api/admin/vip-imports` |
 | Queue and purchase | `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase` |
 | Payments | `GET /api/payments/vnpay/callback`, `GET /api/payments/vnpay/ipn`, `POST /api/payments/momo/callback` |
 | Orders and tickets | `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets` |

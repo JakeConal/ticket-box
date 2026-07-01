@@ -129,6 +129,27 @@ export type VipGuestResponse = {
   enteredAt?: string | null;
 };
 
+export type CheckerAccount = {
+  id: string;
+  email: string;
+  enabled: boolean;
+  createdAt: string;
+};
+
+export type CheckerAssignment = {
+  id: string;
+  concertId: string;
+  checkerId: string;
+  deviceId?: string | null;
+  gateId: string;
+  laneId?: string | null;
+  allowedZones: string[];
+  state: "ACTIVE" | "STANDBY" | "INACTIVE";
+  activationMode: "ONLINE" | "EMERGENCY_LOCAL";
+  activatedAt?: string | null;
+  createdAt: string;
+};
+
 
 
 const SESSION_KEY = "ticketbox.admin.session";
@@ -183,7 +204,7 @@ export async function adminGet<T>(path: string) {
   });
 }
 
-export async function adminJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown) {
+export async function adminJson<T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown) {
   return request<T>(path, {
     method,
     headers: authHeaders({ "Content-Type": "application/json" }),
@@ -214,6 +235,51 @@ export async function getVipGuests(concertId: string): Promise<VipGuestResponse[
 
 export async function deleteVipGuest(concertId: string, guestId: string): Promise<void> {
   return adminJson<void>(`/api/admin/concerts/${concertId}/vip-guests/${guestId}`, "DELETE");
+}
+
+export async function getCheckerAccounts(): Promise<CheckerAccount[]> {
+  return adminGet<CheckerAccount[]>("/api/admin/checkers");
+}
+
+export async function createCheckerAccount(email: string, password: string): Promise<CheckerAccount> {
+  return adminJson<CheckerAccount>("/api/admin/checkers", "POST", { email, password });
+}
+
+export async function resetCheckerPassword(checkerId: string, password: string): Promise<void> {
+  return adminJson<void>(`/api/admin/checkers/${checkerId}/password`, "PUT", { password });
+}
+
+export async function updateCheckerStatus(checkerId: string, enabled: boolean): Promise<CheckerAccount> {
+  return adminJson<CheckerAccount>(`/api/admin/checkers/${checkerId}/status`, "PUT", { enabled });
+}
+
+export async function getCheckerAssignments(checkerId: string): Promise<CheckerAssignment[]> {
+  return adminGet<CheckerAssignment[]>(`/api/admin/checkers/${checkerId}/assignments`);
+}
+
+export async function createCheckerAssignment(
+  concertId: string,
+  assignment: {
+    checkerId: string;
+    deviceId?: string;
+    gateId: string;
+    laneId?: string;
+    allowedZones: string[];
+    state: CheckerAssignment["state"];
+  }
+): Promise<CheckerAssignment> {
+  return adminJson<CheckerAssignment>(`/api/admin/concerts/${concertId}/checker-assignments`, "POST", assignment);
+}
+
+export async function updateCheckerAssignmentState(
+  assignment: CheckerAssignment,
+  state: CheckerAssignment["state"]
+): Promise<CheckerAssignment> {
+  return adminJson<CheckerAssignment>(
+    `/api/admin/concerts/${assignment.concertId}/checker-assignments/${assignment.id}/state`,
+    "PATCH",
+    { state, activationMode: "ONLINE", reason: "Updated by organizer" }
+  );
 }
 
 export function toConcertRequest(form: ConcertForm) {

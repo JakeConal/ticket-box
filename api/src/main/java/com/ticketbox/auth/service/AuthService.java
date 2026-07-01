@@ -95,6 +95,10 @@ public class AuthService {
             token.revoke();
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token expired");
         }
+        if (!token.getUser().isEnabled()) {
+            refreshTokenRepository.revokeAllForUser(userId);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account is disabled");
+        }
 
         token.revoke();
         return issueAndStoreTokens(token.getUser());

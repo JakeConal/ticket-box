@@ -1,11 +1,13 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AdminOrder,
   ArtistBio,
   CheckinConflict,
+  CheckerAccount,
+  CheckerAssignment,
   ConcertDetail,
   ConcertForm,
   ConcertStats,
@@ -15,6 +17,8 @@ import {
   adminGet,
   adminJson,
   clearSession,
+  createCheckerAccount,
+  createCheckerAssignment,
   readSession,
   toConcertRequest,
   toTicketTypeRequest,
@@ -23,7 +27,12 @@ import {
   triggerVipImport,
   VipGuestResponse,
   getVipGuests,
-  deleteVipGuest
+  deleteVipGuest,
+  getCheckerAccounts,
+  getCheckerAssignments,
+  resetCheckerPassword,
+  updateCheckerAssignmentState,
+  updateCheckerStatus
 } from "../../lib/admin-api";
 import { ui } from "../../components/ui";
 
@@ -47,9 +56,42 @@ const EMPTY_TICKET: TicketTypeForm = {
   perUserLimit: "2"
 };
 
+type AssignmentForm = {
+  concertId: string;
+  gateId: string;
+  laneId: string;
+  deviceId: string;
+  allowedZones: string;
+  state: CheckerAssignment["state"];
+};
+
+const EMPTY_ASSIGNMENT: AssignmentForm = {
+  concertId: "",
+  gateId: "",
+  laneId: "",
+  deviceId: "",
+  allowedZones: "",
+  state: "ACTIVE"
+};
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [sessionEmail, setSessionEmail] = useState("");
+  const [checkers, setCheckers] = useState<CheckerAccount[]>([]);
+  const [checkerEmail, setCheckerEmail] = useState("");
+  const [checkerPassword, setCheckerPassword] = useState("");
+  const [checkerSearch, setCheckerSearch] = useState("");
+  const [checkerLoading, setCheckerLoading] = useState(true);
+  const [checkerSaving, setCheckerSaving] = useState(false);
+  const [checkerMessage, setCheckerMessage] = useState("");
+  const [checkerError, setCheckerError] = useState("");
+  const [resettingCheckerId, setResettingCheckerId] = useState("");
+  const [replacementPassword, setReplacementPassword] = useState("");
+  const [managingCheckerId, setManagingCheckerId] = useState("");
+  const [checkerAssignments, setCheckerAssignments] = useState<Record<string, CheckerAssignment[]>>({});
+  const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>(EMPTY_ASSIGNMENT);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [concerts, setConcerts] = useState<ConcertSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<ConcertDetail | null>(null);
@@ -81,7 +123,7 @@ export default function AdminDashboardPage() {
       return;
     }
     setSessionEmail(session.email);
-    void loadConcerts();
+    void Promise.all([loadConcerts(), loadCheckers()]);
   }, [router]);
 
   useEffect(() => {
@@ -105,6 +147,153 @@ export default function AdminDashboardPage() {
     () => concerts.find((concert) => concert.id === selectedId) ?? null,
     [concerts, selectedId]
   );
+
+  const filteredCheckers = useMemo(() => {
+    const query = checkerSearch.trim().toLowerCase();
+    return query
+      ? checkers.filter((checker) => checker.email.toLowerCase().includes(query))
+      : checkers;
+  }, [checkerSearch, checkers]);
+
+  async function loadCheckers() {
+    setCheckerLoading(true);
+    setCheckerError("");
+    try {
+      setCheckers(await getCheckerAccounts());
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not load checker accounts");
+    } finally {
+      setCheckerLoading(false);
+    }
+  }
+
+  async function submitCheckerAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCheckerSaving(true);
+    setCheckerMessage("");
+    setCheckerError("");
+    try {
+      const checker = await createCheckerAccount(checkerEmail.trim(), checkerPassword);
+      setCheckers((current) => [checker, ...current]);
+      setCheckerEmail("");
+      setCheckerPassword("");
+      setCheckerMessage(`Checker account ${checker.email} created.`);
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not create checker account");
+    } finally {
+      setCheckerSaving(false);
+    }
+  }
+
+  async function toggleCheckerStatus(checker: CheckerAccount) {
+    const enabled = !checker.enabled;
+    if (!enabled && !window.confirm(`Disable ${checker.email}? Existing sessions will end immediately.`)) {
+      return;
+    }
+    setCheckerSaving(true);
+    setCheckerMessage("");
+    setCheckerError("");
+    try {
+      const updated = await updateCheckerStatus(checker.id, enabled);
+      setCheckers((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setCheckerMessage(`${updated.email} ${updated.enabled ? "enabled" : "disabled"}.`);
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not update checker status");
+    } finally {
+      setCheckerSaving(false);
+    }
+  }
+
+  async function submitCheckerPassword(event: FormEvent<HTMLFormElement>, checker: CheckerAccount) {
+    event.preventDefault();
+    setCheckerSaving(true);
+    setCheckerMessage("");
+    setCheckerError("");
+    try {
+      await resetCheckerPassword(checker.id, replacementPassword);
+      setResettingCheckerId("");
+      setReplacementPassword("");
+      setCheckerMessage(`Password reset for ${checker.email}. Existing sessions were ended.`);
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not reset checker password");
+    } finally {
+      setCheckerSaving(false);
+    }
+  }
+
+  async function toggleGateManagement(checker: CheckerAccount) {
+    if (managingCheckerId === checker.id) {
+      setManagingCheckerId("");
+      return;
+    }
+    setManagingCheckerId(checker.id);
+    setResettingCheckerId("");
+    setAssignmentForm({ ...EMPTY_ASSIGNMENT, concertId: selectedId || concerts[0]?.id || "" });
+    if (checkerAssignments[checker.id]) {
+      return;
+    }
+    setAssignmentLoading(true);
+    setCheckerError("");
+    try {
+      const assignments = await getCheckerAssignments(checker.id);
+      setCheckerAssignments((current) => ({ ...current, [checker.id]: assignments }));
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not load gate assignments");
+    } finally {
+      setAssignmentLoading(false);
+    }
+  }
+
+  async function submitCheckerAssignment(event: FormEvent<HTMLFormElement>, checker: CheckerAccount) {
+    event.preventDefault();
+    const allowedZones = Array.from(new Set(
+      assignmentForm.allowedZones.split(",").map((zone) => zone.trim()).filter(Boolean)
+    ));
+    if (allowedZones.length === 0) {
+      setCheckerError("Enter at least one allowed zone.");
+      return;
+    }
+    setAssignmentSaving(true);
+    setCheckerMessage("");
+    setCheckerError("");
+    try {
+      const assignment = await createCheckerAssignment(assignmentForm.concertId, {
+        checkerId: checker.id,
+        deviceId: assignmentForm.deviceId.trim() || undefined,
+        gateId: assignmentForm.gateId.trim(),
+        laneId: assignmentForm.laneId.trim() || undefined,
+        allowedZones,
+        state: assignmentForm.state
+      });
+      const assignments = await getCheckerAssignments(checker.id);
+      setCheckerAssignments((current) => ({ ...current, [checker.id]: assignments }));
+      setAssignmentForm((current) => ({ ...EMPTY_ASSIGNMENT, concertId: current.concertId }));
+      setCheckerMessage(`Gate ${assignment.gateId} assigned to ${checker.email}.`);
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not create gate assignment");
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
+  async function changeAssignmentState(assignment: CheckerAssignment, state: CheckerAssignment["state"]) {
+    if (assignment.state === state) {
+      return;
+    }
+    setAssignmentSaving(true);
+    setCheckerMessage("");
+    setCheckerError("");
+    try {
+      const updated = await updateCheckerAssignmentState(assignment, state);
+      const assignments = await getCheckerAssignments(assignment.checkerId);
+      setCheckerAssignments((current) => ({ ...current, [assignment.checkerId]: assignments }));
+      setCheckerMessage(`${updated.gateId} assignment changed to ${updated.state.toLowerCase()}.`);
+    } catch (caught) {
+      setCheckerError(caught instanceof Error ? caught.message : "Could not update gate assignment");
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
 
   async function loadConcerts() {
     setLoading(true);
@@ -413,6 +602,292 @@ export default function AdminDashboardPage() {
 
       {message ? <p className={`${ui.alertSuccess} mt-6`}>{message}</p> : null}
       {error ? <p className={`${ui.alertError} mt-6`} role="alert">{error}</p> : null}
+
+      <section className={`${ui.panel} mt-6`} aria-labelledby="checker-accounts-title">
+        <div className={ui.sectionHeading}>
+          <div>
+            <p className={ui.eyebrow}>Access</p>
+            <h2 className="mt-2 text-2xl font-bold" id="checker-accounts-title">Checker accounts</h2>
+            <p className={`${ui.muted} mt-2`}>Create gate staff credentials, reset passwords, and end access without removing audit history.</p>
+          </div>
+          <span className={ui.statusBadge}>{checkers.filter((checker) => checker.enabled).length} active</span>
+        </div>
+
+        {checkerMessage ? <p className={`${ui.alertSuccess} mt-5`} aria-live="polite">{checkerMessage}</p> : null}
+        {checkerError ? <p className={`${ui.alertError} mt-5`} role="alert">{checkerError}</p> : null}
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
+          <form className={ui.form} onSubmit={submitCheckerAccount}>
+            <h3 className="text-lg font-bold">Create checker</h3>
+            <label>
+              Email
+              <input
+                autoComplete="email"
+                maxLength={320}
+                required
+                type="email"
+                value={checkerEmail}
+                onChange={(event) => setCheckerEmail(event.target.value)}
+              />
+            </label>
+            <label>
+              Temporary password
+              <input
+                autoComplete="new-password"
+                minLength={8}
+                required
+                type="password"
+                value={checkerPassword}
+                onChange={(event) => setCheckerPassword(event.target.value)}
+              />
+            </label>
+            <button className={ui.primaryButton} disabled={checkerSaving} type="submit">
+              {checkerSaving ? "Saving..." : "Create checker"}
+            </button>
+          </form>
+
+          <div>
+            <label className="grid gap-2 text-sm font-medium text-neutral-950">
+              Search checker accounts
+              <input
+                className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                placeholder="checker@ticketbox.vn"
+                type="search"
+                value={checkerSearch}
+                onChange={(event) => setCheckerSearch(event.target.value)}
+              />
+            </label>
+
+            <div className={`${ui.tableWrap} mt-4`}>
+              <table className={ui.table}>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCheckers.map((checker) => (
+                    <Fragment key={checker.id}>
+                      <tr>
+                        <td className="font-semibold">{checker.email}</td>
+                        <td><span className={ui.statusBadge}>{checker.enabled ? "Active" : "Disabled"}</span></td>
+                        <td>{formatDate(checker.createdAt)}</td>
+                        <td>
+                          <div className={ui.actionRow}>
+                            <button
+                              aria-expanded={managingCheckerId === checker.id}
+                              className={`${ui.secondaryButton} ${ui.compactButton}`}
+                              disabled={checkerSaving || assignmentSaving}
+                              type="button"
+                              onClick={() => void toggleGateManagement(checker)}
+                            >
+                              {managingCheckerId === checker.id ? "Close gates" : "Manage gates"}
+                            </button>
+                            <button
+                              className={`${ui.secondaryButton} ${ui.compactButton}`}
+                              disabled={checkerSaving}
+                              type="button"
+                              onClick={() => {
+                                setManagingCheckerId("");
+                                setResettingCheckerId(checker.id);
+                                setReplacementPassword("");
+                              }}
+                            >
+                              Reset password
+                            </button>
+                            <button
+                              className={`${checker.enabled ? ui.dangerButton : ui.secondaryButton} ${ui.compactButton}`}
+                              disabled={checkerSaving}
+                              type="button"
+                              onClick={() => void toggleCheckerStatus(checker)}
+                            >
+                              {checker.enabled ? "Disable" : "Enable"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {managingCheckerId === checker.id ? (
+                        <tr>
+                          <td colSpan={4}>
+                            <div className="grid gap-5 py-2 xl:grid-cols-[20rem_minmax(0,1fr)]">
+                              <form className={ui.form} onSubmit={(event) => submitCheckerAssignment(event, checker)}>
+                                <fieldset className="grid gap-4" disabled={!checker.enabled || assignmentSaving}>
+                                  <legend className="text-lg font-bold">New gate assignment</legend>
+                                  {!checker.enabled ? <p className={ui.muted}>Enable this account before assigning a gate.</p> : null}
+                                  <label>
+                                    Concert
+                                    <select
+                                      className="mt-2 min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                      required
+                                      value={assignmentForm.concertId}
+                                      onChange={(event) => setAssignmentForm((current) => ({ ...current, concertId: event.target.value }))}
+                                    >
+                                      <option value="">Select concert</option>
+                                      {concerts.map((concert) => <option key={concert.id} value={concert.id}>{concert.name}</option>)}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Gate
+                                    <input
+                                      maxLength={255}
+                                      placeholder="GATE-A"
+                                      required
+                                      value={assignmentForm.gateId}
+                                      onChange={(event) => setAssignmentForm((current) => ({ ...current, gateId: event.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    Lane <span className="font-normal text-neutral-600">(optional)</span>
+                                    <input
+                                      maxLength={255}
+                                      placeholder="LANE-1"
+                                      value={assignmentForm.laneId}
+                                      onChange={(event) => setAssignmentForm((current) => ({ ...current, laneId: event.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    Allowed zones
+                                    <input
+                                      placeholder="SVIP, VIP"
+                                      required
+                                      value={assignmentForm.allowedZones}
+                                      onChange={(event) => setAssignmentForm((current) => ({ ...current, allowedZones: event.target.value }))}
+                                    />
+                                    <span className="mt-1 block text-xs font-normal text-neutral-600">Separate multiple zones with commas.</span>
+                                  </label>
+                                  <label>
+                                    Device <span className="font-normal text-neutral-600">(optional)</span>
+                                    <input
+                                      maxLength={255}
+                                      placeholder="device-1"
+                                      value={assignmentForm.deviceId}
+                                      onChange={(event) => setAssignmentForm((current) => ({ ...current, deviceId: event.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    Initial state
+                                    <select
+                                      className="mt-2 min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                      value={assignmentForm.state}
+                                      onChange={(event) => setAssignmentForm((current) => ({
+                                        ...current,
+                                        state: event.target.value as CheckerAssignment["state"]
+                                      }))}
+                                    >
+                                      <option value="ACTIVE">Active</option>
+                                      <option value="STANDBY">Standby</option>
+                                      <option value="INACTIVE">Inactive</option>
+                                    </select>
+                                  </label>
+                                  <button className={ui.primaryButton} type="submit">
+                                    {assignmentSaving ? "Assigning..." : "Assign gate"}
+                                  </button>
+                                </fieldset>
+                              </form>
+
+                              <div>
+                                <div className={ui.sectionHeading}>
+                                  <div>
+                                    <h4 className="text-lg font-bold">Assigned gates</h4>
+                                    <p className={`${ui.muted} mt-1`}>Set an assignment inactive to retain its audit history.</p>
+                                  </div>
+                                  <span className={ui.statusBadge}>{(checkerAssignments[checker.id] || []).length} total</span>
+                                </div>
+                                <div className={`${ui.tableWrap} mt-4`}>
+                                  <table className={ui.table}>
+                                    <thead>
+                                      <tr>
+                                        <th>Concert</th>
+                                        <th>Gate / lane</th>
+                                        <th>Zones</th>
+                                        <th>Device</th>
+                                        <th>State</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(checkerAssignments[checker.id] || []).map((assignment) => (
+                                        <tr key={assignment.id}>
+                                          <td>{concerts.find((concert) => concert.id === assignment.concertId)?.name || shortId(assignment.concertId)}</td>
+                                          <td className="font-semibold">{assignment.gateId}{assignment.laneId ? ` / ${assignment.laneId}` : ""}</td>
+                                          <td>{assignment.allowedZones.join(", ")}</td>
+                                          <td>{assignment.deviceId || "Any"}</td>
+                                          <td>
+                                            <select
+                                              aria-label={`State for ${assignment.gateId}`}
+                                              className="min-h-10 border border-neutral-500 bg-white px-2 py-1 text-sm outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:opacity-50"
+                                              disabled={assignmentSaving}
+                                              value={assignment.state}
+                                              onChange={(event) => void changeAssignmentState(
+                                                assignment,
+                                                event.target.value as CheckerAssignment["state"]
+                                              )}
+                                            >
+                                              <option value="ACTIVE">Active</option>
+                                              <option value="STANDBY">Standby</option>
+                                              <option value="INACTIVE">Inactive</option>
+                                            </select>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {assignmentLoading ? <tr><td colSpan={5}>Loading gate assignments...</td></tr> : null}
+                                      {!assignmentLoading && (checkerAssignments[checker.id] || []).length === 0 ? (
+                                        <tr><td colSpan={5}>No gate assignments yet.</td></tr>
+                                      ) : null}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {resettingCheckerId === checker.id ? (
+                        <tr>
+                          <td colSpan={4}>
+                            <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => submitCheckerPassword(event, checker)}>
+                              <label className="grid min-w-64 flex-1 gap-2 text-sm font-medium">
+                                New password for {checker.email}
+                                <input
+                                  autoComplete="new-password"
+                                  className="min-h-11 border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                  minLength={8}
+                                  required
+                                  type="password"
+                                  value={replacementPassword}
+                                  onChange={(event) => setReplacementPassword(event.target.value)}
+                                />
+                              </label>
+                              <button className={`${ui.primaryButton} ${ui.compactButton}`} disabled={checkerSaving} type="submit">Save password</button>
+                              <button
+                                className={`${ui.ghostButton} ${ui.compactButton}`}
+                                disabled={checkerSaving}
+                                type="button"
+                                onClick={() => {
+                                  setResettingCheckerId("");
+                                  setReplacementPassword("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  ))}
+                  {!checkerLoading && filteredCheckers.length === 0 ? (
+                    <tr><td colSpan={4}>{checkers.length === 0 ? "No checker accounts yet." : "No checker accounts match this search."}</td></tr>
+                  ) : null}
+                  {checkerLoading ? <tr><td colSpan={4}>Loading checker accounts...</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[23rem_minmax(0,1fr)]">
         <aside className="border border-neutral-950 p-5" aria-label="Concert list">

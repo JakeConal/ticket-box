@@ -1,6 +1,9 @@
 package com.ticketbox.checkin.service;
 
 import com.ticketbox.auth.security.UserPrincipal;
+import com.ticketbox.auth.model.User;
+import com.ticketbox.auth.model.UserRole;
+import com.ticketbox.auth.repository.UserRepository;
 import com.ticketbox.auth.service.AuthenticatedUserService;
 import com.ticketbox.auth.service.OrganizerOwnershipService;
 import com.ticketbox.checkin.dto.CheckerAssignmentAuditRequest;
@@ -39,16 +42,45 @@ public class CheckerAssignmentService {
             "EMERGENCY_LOCAL_ACTIVATED");
 
     private final JdbcTemplate jdbcTemplate;
+    private final UserRepository userRepository;
     private final AuthenticatedUserService authenticatedUserService;
     private final OrganizerOwnershipService organizerOwnershipService;
 
     public CheckerAssignmentService(
             JdbcTemplate jdbcTemplate,
+            UserRepository userRepository,
             AuthenticatedUserService authenticatedUserService,
             OrganizerOwnershipService organizerOwnershipService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.userRepository = userRepository;
         this.authenticatedUserService = authenticatedUserService;
         this.organizerOwnershipService = organizerOwnershipService;
+    }
+
+    @Transactional(readOnly = true)
+    public List<CheckerAssignmentResponse> listForOrganizer(UUID checkerId) {
+        requireChecker(checkerId, false);
+        UserPrincipal organizer = authenticatedUserService.requireCurrentUser();
+        return jdbcTemplate.query("""
+                select assignment.id,
+                       assignment.concert_id,
+                       assignment.checker_id,
+                       assignment.device_id,
+                       assignment.gate_id,
+                       assignment.lane_id,
+                       assignment.allowed_zones,
+                       assignment.state,
+                       assignment.activation_mode,
+                       assignment.activated_at,
+                       assignment.created_at
+                from checker_gate_assignments assignment
+                join concerts concert on concert.id = assignment.concert_id
+                where assignment.checker_id = ?
+                  and concert.created_by = ?
+                order by concert.event_date desc,
+                         assignment.gate_id,
+                         assignment.lane_id nulls first
+                """, this::mapAssignment, checkerId, organizer.id());
     }
 
     public CheckerAssignmentsResponse listForCurrentChecker(UUID concertId) {
@@ -78,6 +110,7 @@ public class CheckerAssignmentService {
     @Transactional
     public CheckerAssignmentResponse create(UUID concertId, CheckerAssignmentRequest request) {
         organizerOwnershipService.requireOwnedConcert(concertId);
+        requireChecker(request.checkerId(), true);
         String state = normalizeState(request.state());
         UUID assignmentId = insertAssignment(concertId, request, state);
         if ("ACTIVE".equals(state)) {
@@ -130,9 +163,11 @@ public class CheckerAssignmentService {
     }
 
     private UUID insertAssignment(UUID concertId, CheckerAssignmentRequest request, String state) {
+        UUID assignmentId = UUID.randomUUID();
         return jdbcTemplate.execute((ConnectionCallback<UUID>) connection -> {
             try (var statement = connection.prepareStatement("""
                     insert into checker_gate_assignments (
+                        id,
                         concert_id,
                         checker_id,
                         device_id,
@@ -141,26 +176,35 @@ public class CheckerAssignmentService {
                         allowed_zones,
                         state,
                         activation_mode,
-                        activated_at
+                        activated_at,
+                        created_at
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, 'ONLINE', case when ? = 'ACTIVE' then now() else null end)
-                    returning id
+                    values (?, ?, ?, ?, ?, ?, ?, ?, 'ONLINE', case when ? = 'ACTIVE' then now() else null end, now())
                     """)) {
-                statement.setObject(1, concertId);
-                statement.setObject(2, request.checkerId());
-                setNullableString(statement, 3, request.deviceId());
-                statement.setString(4, request.gateId());
-                setNullableString(statement, 5, request.laneId());
+                statement.setObject(1, assignmentId);
+                statement.setObject(2, concertId);
+                statement.setObject(3, request.checkerId());
+                setNullableString(statement, 4, request.deviceId());
+                statement.setString(5, request.gateId());
+                setNullableString(statement, 6, request.laneId());
                 Array zones = connection.createArrayOf("text", request.allowedZones().toArray(String[]::new));
-                statement.setArray(6, zones);
-                statement.setString(7, state);
+                statement.setArray(7, zones);
                 statement.setString(8, state);
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    resultSet.next();
-                    return resultSet.getObject(1, UUID.class);
-                }
+                statement.setString(9, state);
+                statement.executeUpdate();
+                return assignmentId;
             }
         });
+    }
+
+    private User requireChecker(UUID checkerId, boolean requireEnabled) {
+        User checker = userRepository.findById(checkerId)
+                .filter(user -> user.getRole() == UserRole.CHECKER)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Checker account not found"));
+        if (requireEnabled && !checker.isEnabled()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Checker account is disabled");
+        }
+        return checker;
     }
 
     private void audit(UUID assignmentId, UUID checkerId, String deviceId, String action, String reason) {
