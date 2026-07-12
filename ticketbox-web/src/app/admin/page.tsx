@@ -29,6 +29,8 @@ import {
   VipGuestResponse,
   getVipGuests,
   deleteVipGuest,
+  deleteConcert,
+  deleteTicketType,
   getCheckerAccounts,
   getCheckerAssignments,
   resetCheckerPassword,
@@ -511,6 +513,40 @@ export default function AdminDashboardPage() {
     }
     const text = await file.text();
     setForm((current) => ({ ...current, seatMapSvg: text }));
+  }
+
+  async function handleDeleteConcert() {
+    if (!detail?.id) return;
+    if (!window.confirm(`WARNING: This will permanently delete the concert "${detail.name}" and all associated orders, tickets, check-in history, and assignments. Are you absolutely sure you want to proceed?`)) {
+      return;
+    }
+    await runAction(async () => {
+      await deleteConcert(detail.id);
+      setDetail(null);
+      setSelectedId("");
+      setForm(EMPTY_CONCERT);
+      setBio(null);
+      setStats(null);
+      setConflicts([]);
+      setRefunds([]);
+      await loadConcerts();
+      setMessage("Concert permanently deleted.");
+    });
+  }
+
+  async function handleDeleteTicketType(ticketTypeId: string, ticketTypeName: string) {
+    if (!detail?.id) return;
+    if (!window.confirm(`Are you sure you want to delete the ticket type "${ticketTypeName}"? This will delete all tickets of this type.`)) {
+      return;
+    }
+    await runAction(async () => {
+      await deleteTicketType(detail.id, ticketTypeId);
+      if (ticketForm.id === ticketTypeId) {
+        setTicketForm(EMPTY_TICKET);
+      }
+      await loadWorkspace(detail.id);
+      setMessage("Ticket type deleted.");
+    });
   }
 
   async function markRefunded(orderId: string) {
@@ -1100,6 +1136,9 @@ export default function AdminDashboardPage() {
                 <button className={ui.dangerButton} disabled={saving || detail.status === "CANCELLED"} type="button" onClick={cancelConcert}>
                   Cancel
                 </button>
+                <button className={ui.dangerButton} disabled={saving} type="button" onClick={handleDeleteConcert}>
+                  Delete Concert
+                </button>
               </div>
             ) : null}
           </div>
@@ -1174,9 +1213,30 @@ export default function AdminDashboardPage() {
                   Per-user limit
                   <input required min="1" type="number" value={ticketForm.perUserLimit} onChange={(event) => setTicketValue("perUserLimit", event.target.value)} />
                 </label>
-                <button className={ui.secondaryButton} disabled={!detail || saving} type="submit">
-                  {ticketForm.id ? "Update ticket type" : "Add ticket type"}
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button className={ui.secondaryButton} disabled={!detail || saving} type="submit">
+                    {ticketForm.id ? "Update ticket type" : "Add ticket type"}
+                  </button>
+                  {ticketForm.id ? (
+                    <button
+                      className={ui.dangerButton}
+                      disabled={!detail || saving}
+                      type="button"
+                      onClick={() => void handleDeleteTicketType(ticketForm.id!, ticketForm.name)}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                  {ticketForm.id ? (
+                    <button
+                      className={ui.ghostButton}
+                      type="button"
+                      onClick={() => setTicketForm(EMPTY_TICKET)}
+                    >
+                      Cancel Edit
+                    </button>
+                  ) : null}
+                </div>
               </form>
               <div className="mt-5 grid border-t border-neutral-300">
                 {detail?.ticketTypes.map((ticket) => (

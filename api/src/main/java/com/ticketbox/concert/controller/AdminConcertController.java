@@ -63,6 +63,18 @@ public class AdminConcertController {
         concertService.cancelConcert(id);
     }
 
+    @DeleteMapping("/{id}/purge")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteConcert(@PathVariable UUID id) {
+        concertService.deleteConcert(id);
+    }
+
+    @DeleteMapping("/{id}/ticket-types/{typeId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteTicketType(@PathVariable UUID id, @PathVariable UUID typeId) {
+        concertService.deleteTicketType(id, typeId);
+    }
+
     @PostMapping("/{id}/ticket-types")
     @ResponseStatus(HttpStatus.CREATED)
     TicketTypeResponse createTicketType(

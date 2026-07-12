@@ -316,6 +316,14 @@ export function toTicketTypeRequest(form: TicketTypeForm) {
   };
 }
 
+export async function deleteConcert(id: string): Promise<void> {
+  return adminJson<void>(`/api/admin/concerts/${id}/purge`, "DELETE");
+}
+
+export async function deleteTicketType(concertId: string, ticketTypeId: string): Promise<void> {
+  return adminJson<void>(`/api/admin/concerts/${concertId}/ticket-types/${ticketTypeId}`, "DELETE");
+}
+
 function authHeaders(extra?: Record<string, string>) {
   const session = requireOrganizerSession();
   return {

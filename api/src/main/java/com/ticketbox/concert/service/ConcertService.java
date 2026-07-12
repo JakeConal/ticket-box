@@ -332,4 +332,145 @@ public class ConcertService {
     private void invalidateConcertAndListings(UUID concertId) {
         concertCacheService.invalidateConcertAndListings(concertId);
     }
+
+    @Transactional
+    public void deleteConcert(UUID concertId) {
+        UserPrincipal organizer = authenticatedUserService.requireCurrentUser();
+        UUID ownerId;
+        try {
+            ownerId = jdbcTemplate.queryForObject("select created_by from concerts where id = ?", UUID.class, concertId);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concert not found");
+        }
+        if (!ownerId.equals(organizer.id())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Concert is not owned by this organizer");
+        }
+
+        // 1. Delete checkin conflicts
+        jdbcTemplate.update("""
+                delete from checkin_conflicts
+                where ticket_id in (
+                    select t.id from tickets t
+                    join orders o on o.id = t.order_id
+                    where o.concert_id = ?
+                )
+                """, concertId);
+
+        // 2. Delete checkins
+        jdbcTemplate.update("""
+                delete from checkins
+                where ticket_id in (
+                    select t.id from tickets t
+                    join orders o on o.id = t.order_id
+                    where o.concert_id = ?
+                )
+                """, concertId);
+
+        // 3. Delete tickets
+        jdbcTemplate.update("""
+                delete from tickets
+                where order_id in (
+                    select id from orders where concert_id = ?
+                )
+                """, concertId);
+
+        // 4. Delete order items
+        jdbcTemplate.update("""
+                delete from order_items
+                where order_id in (
+                    select id from orders where concert_id = ?
+                )
+                """, concertId);
+
+        // 5. Delete notification outbox
+        jdbcTemplate.update("""
+                delete from notification_outbox
+                where order_id in (
+                    select id from orders where concert_id = ?
+                )
+                """, concertId);
+
+        // 6. Delete idempotency keys
+        jdbcTemplate.update("""
+                delete from idempotency_keys
+                where order_id in (
+                    select id from orders where concert_id = ?
+                )
+                """, concertId);
+
+        // 7. Delete orders
+        jdbcTemplate.update("delete from orders where concert_id = ?", concertId);
+
+        // 8. Delete checker assignments
+        jdbcTemplate.update("delete from checker_gate_assignments where concert_id = ?", concertId);
+
+        // 9. Delete vip guests
+        jdbcTemplate.update("delete from vip_guests where concert_id = ?", concertId);
+
+        // 10. Delete ticket types
+        jdbcTemplate.update("delete from ticket_types where concert_id = ?", concertId);
+
+        // 11. Delete concert
+        jdbcTemplate.update("delete from concerts where id = ?", concertId);
+
+        // 12. Invalidate caches
+        invalidateConcertAndListings(concertId);
+    }
+
+    @Transactional
+    public void deleteTicketType(UUID concertId, UUID ticketTypeId) {
+        UserPrincipal organizer = authenticatedUserService.requireCurrentUser();
+        UUID ownerId;
+        try {
+            ownerId = jdbcTemplate.queryForObject("select created_by from concerts where id = ?", UUID.class, concertId);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concert not found");
+        }
+        if (!ownerId.equals(organizer.id())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Concert is not owned by this organizer");
+        }
+
+        int count = jdbcTemplate.queryForObject(
+                "select count(*) from ticket_types where id = ? and concert_id = ?",
+                Integer.class, ticketTypeId, concertId);
+        if (count == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket type not found");
+        }
+
+        // 1. Delete checkin conflicts
+        jdbcTemplate.update("""
+                delete from checkin_conflicts
+                where ticket_id in (
+                    select id from tickets where ticket_type_id = ?
+                )
+                """, ticketTypeId);
+
+        // 2. Delete checkins
+        jdbcTemplate.update("""
+                delete from checkins
+                where ticket_id in (
+                    select id from tickets where ticket_type_id = ?
+                )
+                """, ticketTypeId);
+
+        // 3. Delete tickets
+        jdbcTemplate.update("delete from tickets where ticket_type_id = ?", ticketTypeId);
+
+        // 4. Delete order items
+        jdbcTemplate.update("delete from order_items where ticket_type_id = ?", ticketTypeId);
+
+        // 5. Delete empty orders
+        jdbcTemplate.update("""
+                delete from orders
+                where concert_id = ?
+                  and id not in (select distinct order_id from order_items)
+                """, concertId);
+
+        // 6. Delete ticket type
+        jdbcTemplate.update("delete from ticket_types where id = ?", ticketTypeId);
+
+        // 7. Invalidate caches
+        invalidateConcert(concertId);
+        concertCacheService.invalidateTicketAvailability(ticketTypeId);
+    }
 }
