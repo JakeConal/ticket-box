@@ -229,6 +229,16 @@ export async function triggerVipImport(): Promise<VipImportSummary[]> {
   return adminJson<VipImportSummary[]>("/api/admin/vip-imports", "POST");
 }
 
+export async function uploadVipCsv(file: File): Promise<VipImportSummary[]> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<VipImportSummary[]>("/api/admin/vip-imports/upload", {
+    method: "POST",
+    headers: authHeaders(),
+    body: form
+  });
+}
+
 export async function getVipGuests(concertId: string): Promise<VipGuestResponse[]> {
   return adminGet<VipGuestResponse[]>(`/api/admin/concerts/${concertId}/vip-guests`);
 }

@@ -25,6 +25,7 @@ import {
   uploadArtistPdf,
   VipImportSummary,
   triggerVipImport,
+  uploadVipCsv,
   VipGuestResponse,
   getVipGuests,
   deleteVipGuest,
@@ -126,6 +127,7 @@ export default function AdminDashboardPage() {
   const [vipImportError, setVipImportError] = useState("");
   const [vipDirectoryMessage, setVipDirectoryMessage] = useState("");
   const [vipDirectoryError, setVipDirectoryError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
 
   useEffect(() => {
@@ -550,6 +552,71 @@ export default function AdminDashboardPage() {
       setImporting(false);
     }
   }
+
+  async function processVipFile(file: File) {
+    setImporting(true);
+    setVipImportMessage("");
+    setVipImportError("");
+    try {
+      const summaries = await uploadVipCsv(file);
+      setVipSummaries(summaries);
+      if (summaries.length === 0) {
+        setVipImportMessage("No summaries returned from CSV upload.");
+      } else {
+        const totalRows = summaries.reduce((acc, s) => acc + s.totalRows, 0);
+        const inserted = summaries.reduce((acc, s) => acc + s.inserted, 0);
+        const skipped = summaries.reduce((acc, s) => acc + s.skipped, 0);
+        const errored = summaries.reduce((acc, s) => acc + s.errored, 0);
+        setVipImportMessage(`Successfully uploaded and processed CSV. Total rows: ${totalRows}, Inserted: ${inserted}, Skipped: ${skipped}, Errored: ${errored}.`);
+      }
+      setTimeout(() => {
+        setVipImportMessage("");
+      }, 7000);
+      if (detail?.id) {
+        const nextVips = await getVipGuests(detail.id);
+        setVipGuests(nextVips);
+      }
+    } catch (caught) {
+      setVipImportError(caught instanceof Error ? caught.message : String(caught));
+      setTimeout(() => {
+        setVipImportError("");
+      }, 7000);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleVipCsvUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    void processVipFile(file);
+  }
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        setVipImportError("Only CSV files are supported.");
+        setTimeout(() => setVipImportError(""), 5000);
+        return;
+      }
+      void processVipFile(file);
+    }
+  };
 
   async function handleDeleteVip(vipId: string, vipName: string) {
     if (!detail?.id) return;
@@ -1203,18 +1270,42 @@ export default function AdminDashboardPage() {
             {activeSection === "vip" ? <section className={ui.panel} aria-labelledby="vip-import-title">
               <h3 className="text-xl font-bold" id="vip-import-title">VIP Guest Import</h3>
               <p className={`${ui.muted} mt-2`}>
-                Manually process pending VIP guest list CSV files from the server's import directory.
+                Upload and process VIP guest list CSV files directly in your workspace.
               </p>
               
-              <div className="mt-4">
-                <button
-                  className={ui.primaryButton}
-                  disabled={importing}
-                  type="button"
-                  onClick={handleVipImport}
+              <div className="mt-4 grid gap-4">
+                <label
+                  className={`grid gap-2 border border-dashed p-6 text-center cursor-pointer transition-colors ${
+                    dragActive ? "border-neutral-950 bg-neutral-100" : "border-neutral-500 hover:bg-neutral-50"
+                  }`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
                 >
-                  {importing ? "Importing files..." : "Trigger VIP Import"}
-                </button>
+                  <span className="font-semibold text-neutral-900">Drag & Drop VIP CSV file here</span>
+                  <span className="text-xs text-neutral-600">or click to browse your files. CSV format must contain event_code, name, phone, zone columns.</span>
+                  <input
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    disabled={importing}
+                    type="file"
+                    onChange={handleVipCsvUpload}
+                  />
+                </label>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-neutral-500">Or process files from server folder:</span>
+                  <button
+                    className={`${ui.secondaryButton} ${ui.compactButton}`}
+                    disabled={importing}
+                    type="button"
+                    onClick={handleVipImport}
+                  >
+                    {importing ? "Importing..." : "Scan Directory"}
+                  </button>
+                </div>
+
                 {vipImportMessage ? <p className={`${ui.alertSuccess} mt-4`}>{vipImportMessage}</p> : null}
                 {vipImportError ? <p className={`${ui.alertError} mt-4`} role="alert">{vipImportError}</p> : null}
               </div>

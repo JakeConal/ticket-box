@@ -317,7 +317,7 @@ export default function ConcertDetailPage() {
 
         <article className={ui.panel}>
           <h2 className="text-xl font-bold">Artist info</h2>
-          <p className={`${ui.muted} mt-3`}>{concert.artistBio || "Artist bio coming soon..."}</p>
+          <p className={`${ui.muted} mt-3 whitespace-pre-line`}>{concert.artistBio || "Artist bio coming soon..."}</p>
         </article>
 
         <article className={ui.panel}>
