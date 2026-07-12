@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { Camera } from "expo-camera";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -16,6 +16,7 @@ import {
   readJson,
   API_BASE_STORAGE_KEY,
   TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
   CONCERT_STORAGE_KEY,
   KEY_BUNDLE_STORAGE_KEY,
   ASSIGNMENTS_STORAGE_KEY,
@@ -26,7 +27,7 @@ import { verifyRs256, makeId, normalize, bytesToText, base64UrlToBytes } from ".
 import styles from "./src/styles";
 import { StatusBanner, TabBar } from "./src/components/UI";
 import { LoginScreen } from "./src/screens/LoginScreen";
-import { ScanTab } from "./src/screens/ScanTab";
+import { ScanTab, type ScanFeedbackResult } from "./src/screens/ScanTab";
 import { SyncTab } from "./src/screens/SyncTab";
 import { VipTab } from "./src/screens/VipTab";
 
@@ -36,6 +37,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [concertId, setConcertId] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState("");
   const [keyBundle, setKeyBundle] = useState<KeyBundle | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -47,6 +49,8 @@ export default function App() {
   const [vipQuery, setVipQuery] = useState("");
   const [vipGuests, setVipGuests] = useState<any[]>([]);
   const [mockScanToken, setMockScanToken] = useState("");
+  const tokenRef = useRef<string | null>(null);
+  const refreshTokenRef = useRef<string | null>(null);
 
   const getCleanUrl = () => {
     let url = apiBaseUrl.trim();
@@ -84,7 +88,12 @@ export default function App() {
     setDeviceId(nextDeviceId);
     setApiBaseUrl((await SecureStore.getItemAsync(API_BASE_STORAGE_KEY)) ?? apiBaseUrl);
     setConcertId((await SecureStore.getItemAsync(CONCERT_STORAGE_KEY)) ?? "");
-    setToken(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY));
+    const storedToken = await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
+    const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY);
+    tokenRef.current = storedToken;
+    refreshTokenRef.current = storedRefreshToken;
+    setToken(storedToken);
+    setRefreshToken(storedRefreshToken);
     setKeyBundle(readJson<KeyBundle>(await SecureStore.getItemAsync(KEY_BUNDLE_STORAGE_KEY)));
     setAssignments(readJson<Assignment[]>(await SecureStore.getItemAsync(ASSIGNMENTS_STORAGE_KEY)) ?? []);
     loadPending();
@@ -103,15 +112,13 @@ export default function App() {
         return;
       }
       const body = await response.json();
-      const accessToken = body.accessToken ?? body.token ?? body.jwt;
+      const accessToken = await persistAuthSession(body);
       if (!accessToken) {
         setStatus("Login response did not include an access token.");
         return;
       }
       await SecureStore.setItemAsync(API_BASE_STORAGE_KEY, getCleanUrl());
-      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, accessToken);
       await SecureStore.setItemAsync(CONCERT_STORAGE_KEY, concertId);
-      setToken(accessToken);
       await refreshCheckerState(accessToken);
     } catch (error) {
       console.error(error);
@@ -119,27 +126,98 @@ export default function App() {
     }
   }
 
+  async function persistAuthSession(body: any) {
+    const accessToken = body.accessToken ?? body.token ?? body.jwt;
+    const nextRefreshToken = body.refreshToken ?? null;
+    if (!accessToken) {
+      return null;
+    }
+
+    tokenRef.current = accessToken;
+    refreshTokenRef.current = nextRefreshToken;
+    setToken(accessToken);
+    setRefreshToken(nextRefreshToken);
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, accessToken);
+    if (nextRefreshToken) {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, nextRefreshToken);
+    }
+    return accessToken;
+  }
+
   async function logout() {
     await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY);
     await SecureStore.deleteItemAsync(ASSIGNMENTS_STORAGE_KEY);
     await SecureStore.deleteItemAsync(KEY_BUNDLE_STORAGE_KEY);
+    tokenRef.current = null;
+    refreshTokenRef.current = null;
     setToken(null);
+    setRefreshToken(null);
     setAssignments([]);
     setKeyBundle(null);
     setStatus("Sign in to load assignments.");
   }
 
+  async function refreshAccessToken() {
+    const currentRefreshToken = refreshTokenRef.current;
+    if (!currentRefreshToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    const response = await fetch(`${getCleanUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: currentRefreshToken })
+    });
+    if (!response.ok) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    return persistAuthSession(await response.json());
+  }
+
+  async function authenticatedFetch(
+    url: string,
+    init: RequestInit = {},
+    preferredToken?: string | null
+  ) {
+    const accessToken = preferredToken ?? tokenRef.current ?? await refreshAccessToken();
+    const response = await fetchWithToken(url, init, accessToken);
+    if (response.status !== 401) {
+      return response;
+    }
+
+    const nextAccessToken = await refreshAccessToken();
+    return fetchWithToken(url, init, nextAccessToken);
+  }
+
+  function fetchWithToken(url: string, init: RequestInit, accessToken: string | null) {
+    if (!accessToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${accessToken}`);
+    return fetch(url, { ...init, headers });
+  }
+
   async function refreshCheckerState(nextToken = token) {
-    if (!nextToken || !concertId) {
+    if (!concertId) {
       setStatus("Token and concert ID are required.");
       return;
     }
-    const headers = { Authorization: `Bearer ${nextToken}` };
+    if (!nextToken && !refreshTokenRef.current) {
+      setStatus("Session expired. Please sign in again.");
+      return;
+    }
     try {
-      const [bundleResponse, assignmentsResponse] = await Promise.all([
-        fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, { headers }),
-        fetch(`${getCleanUrl()}/api/checker/assignments?concertId=${concertId}`, { headers })
-      ]);
+      const bundleResponse = await authenticatedFetch(
+        `${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`,
+        {},
+        nextToken
+      );
+      const assignmentsResponse = await authenticatedFetch(
+        `${getCleanUrl()}/api/checker/assignments?concertId=${concertId}`,
+        {},
+        nextToken
+      );
       if (!bundleResponse.ok || !assignmentsResponse.ok) {
         setStatus("Could not refresh checker keys or assignments.");
         return;
@@ -158,9 +236,13 @@ export default function App() {
     }
   }
 
-  async function handleScan({ data }: { data: string }) {
+  async function handleScan({ data }: { data: string }): Promise<ScanFeedbackResult | void> {
     if (scanLocked) {
-      return;
+      return {
+        tone: "error",
+        title: "SCAN BUSY",
+        subtitle: "Please wait before scanning again."
+      };
     }
     const qrToken = data.replace(/\s/g, "");
     setScanLocked(true);
@@ -168,7 +250,11 @@ export default function App() {
       const assignment = activeAssignment;
       if (!assignment) {
         setStatus("Scanner blocked: no cached ACTIVE assignment.");
-        return;
+        return {
+          tone: "error",
+          title: "SCAN FAILED",
+          subtitle: "No active gate assignment."
+        };
       }
       let payload: TicketPayload;
       try {
@@ -192,11 +278,20 @@ export default function App() {
       }
       if (payload.concertId !== concertId) {
         setStatus("Rejected: ticket is for another concert.");
-        return;
+        return {
+          tone: "error",
+          title: "SCAN FAILED",
+          subtitle: "Ticket is for another concert."
+        };
       }
       if (!assignment.allowedZones.map(normalize).includes(normalize(payload.zone))) {
-        setStatus("Rejected: ticket zone is not allowed at this gate.");
-        return;
+        setStatus("Wrong gate: ticket zone is not allowed at this gate.");
+        return {
+          tone: "error",
+          title: "WRONG GATE",
+          subtitle: `Ticket zone ${payload.zone} is not allowed at ${assignment.gateId}.`,
+          mark: "FAIL"
+        };
       }
       const existing = db.getFirstSync<LocalCheckin>(
         "select * from local_checkins where ticket_id = ?",
@@ -204,7 +299,12 @@ export default function App() {
       );
       if (existing) {
         setStatus(`Duplicate local scan: ${existing.sync_status}.`);
-        return;
+        return {
+          tone: "error",
+          title: "SCAN FAILED",
+          subtitle: `Duplicate ticket: ${existing.sync_status.replace(/_/g, " ")}.`,
+          mark: "FAIL"
+        };
       }
       const clientScanId = makeId();
       const scannedAt = new Date().toISOString();
@@ -234,20 +334,30 @@ export default function App() {
       setStatus("Valid ticket. Stored locally.");
       loadPending();
       await syncOne(clientScanId);
+      return {
+        tone: "success",
+        title: "TICKET ACCEPTED",
+        subtitle: "Stored locally."
+      };
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Scan failed.");
+      const message = error instanceof Error ? error.message : "Scan failed.";
+      setStatus(message);
+      return {
+        tone: "error",
+        title: "SCAN FAILED",
+        subtitle: message,
+        mark: "FAIL"
+      };
     } finally {
       setTimeout(() => setScanLocked(false), 1200);
     }
   }
 
   async function refreshKeyBundle(): Promise<KeyBundle> {
-    if (!token || !concertId) {
+    if (!concertId) {
       throw new Error("Token and concert ID are required to refresh QR keys.");
     }
-    const response = await fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const response = await authenticatedFetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`);
     if (!response.ok) {
       throw new Error("Could not refresh QR verification keys.");
     }
@@ -316,7 +426,7 @@ export default function App() {
   }
 
   async function syncOne(clientScanId: string) {
-    if (!token) {
+    if (!tokenRef.current && !refreshTokenRef.current) {
       return;
     }
     const row = db.getFirstSync<LocalCheckin>(
@@ -327,10 +437,9 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(`${getCleanUrl()}/api/checkins/${row.ticket_id}`, {
+      const response = await authenticatedFetch(`${getCleanUrl()}/api/checkins/${row.ticket_id}`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -368,7 +477,7 @@ export default function App() {
   }
 
   async function flushQueue() {
-    if (!token) {
+    if (!tokenRef.current && !refreshTokenRef.current) {
       return;
     }
 
@@ -379,10 +488,9 @@ export default function App() {
     );
     for (const audit of audits) {
       try {
-        const response = await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
+        const response = await authenticatedFetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -411,10 +519,9 @@ export default function App() {
       setStatus("No pending scans.");
       return;
     }
-    const response = await fetch(`${getCleanUrl()}/api/checkins/batch`, {
+    const response = await authenticatedFetch(`${getCleanUrl()}/api/checkins/batch`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -450,7 +557,7 @@ export default function App() {
   }
 
   async function syncOneAudit(auditId: string) {
-    if (!token) {
+    if (!tokenRef.current && !refreshTokenRef.current) {
       return;
     }
     const row = db.getFirstSync<any>(
@@ -461,10 +568,9 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
+      const response = await authenticatedFetch(`${getCleanUrl()}/api/checker/assignment-audit`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -523,14 +629,13 @@ export default function App() {
   }
 
   async function searchVip() {
-    if (!token || vipQuery.trim().length < 2) {
+    if ((!tokenRef.current && !refreshTokenRef.current) || vipQuery.trim().length < 2) {
       setVipGuests([]);
       setStatus("VIP lookup requires network and at least 2 characters.");
       return;
     }
-    const response = await fetch(
-      `${getCleanUrl()}/api/vip-guests?concertId=${concertId}&q=${encodeURIComponent(vipQuery)}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+    const response = await authenticatedFetch(
+      `${getCleanUrl()}/api/vip-guests?concertId=${concertId}&q=${encodeURIComponent(vipQuery)}`
     );
     if (!response.ok) {
       setStatus("VIP lookup failed or offline.");
@@ -542,12 +647,11 @@ export default function App() {
   }
 
   async function enterVip(guestId: string) {
-    if (!token) {
+    if (!tokenRef.current && !refreshTokenRef.current) {
       return;
     }
-    const response = await fetch(`${getCleanUrl()}/api/vip-guests/${guestId}/enter`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` }
+    const response = await authenticatedFetch(`${getCleanUrl()}/api/vip-guests/${guestId}/enter`, {
+      method: "POST"
     });
     if (response.status === 409) {
       setStatus("ALREADY ADMITTED - Entered previously.");
@@ -576,7 +680,7 @@ export default function App() {
     );
   }
 
-  const signedIn = Boolean(token);
+  const signedIn = Boolean(token || refreshToken);
 
   return (
     <SafeAreaView style={styles.screen}>
