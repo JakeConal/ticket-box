@@ -162,6 +162,7 @@ export default function App() {
     if (scanLocked) {
       return;
     }
+    const qrToken = data.replace(/\s/g, "");
     setScanLocked(true);
     try {
       const assignment = activeAssignment;
@@ -169,7 +170,26 @@ export default function App() {
         setStatus("Scanner blocked: no cached ACTIVE assignment.");
         return;
       }
-      const payload = await verifyQr(data);
+      let payload: TicketPayload;
+      try {
+        payload = await verifyQr(qrToken);
+      } catch (error) {
+        if (!isSignatureVerificationError(error)) {
+          throw error;
+        }
+        console.warn("QR signature failed before key refresh", qrDebugInfo(qrToken, keyBundle));
+        setStatus("Refreshing QR verification keys...");
+        const refreshedBundle = await refreshKeyBundle();
+        try {
+          payload = await verifyQr(qrToken, refreshedBundle);
+        } catch (retryError) {
+          if (isSignatureVerificationError(retryError)) {
+            console.warn("QR signature failed after key refresh", qrDebugInfo(qrToken, refreshedBundle));
+            throw new Error("Signature verification failed after refreshing QR keys. Generate a fresh JWT and try again.");
+          }
+          throw retryError;
+        }
+      }
       if (payload.concertId !== concertId) {
         setStatus("Rejected: ticket is for another concert.");
         return;
@@ -221,8 +241,60 @@ export default function App() {
     }
   }
 
-  async function verifyQr(tokenValue: string): Promise<TicketPayload> {
-    if (!keyBundle) {
+  async function refreshKeyBundle(): Promise<KeyBundle> {
+    if (!token || !concertId) {
+      throw new Error("Token and concert ID are required to refresh QR keys.");
+    }
+    const response = await fetch(`${getCleanUrl()}/api/checker/key-bundle?concertId=${concertId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      throw new Error("Could not refresh QR verification keys.");
+    }
+    const nextBundle = await response.json();
+    await SecureStore.setItemAsync(KEY_BUNDLE_STORAGE_KEY, JSON.stringify(nextBundle));
+    setKeyBundle(nextBundle);
+    return nextBundle;
+  }
+
+  function isSignatureVerificationError(error: unknown) {
+    return error instanceof Error && error.message.toLowerCase().includes("signature verification failed");
+  }
+
+  function qrDebugInfo(tokenValue: string, bundle: KeyBundle | null) {
+    try {
+      const [encodedHeader, encodedPayload] = tokenValue.split(".");
+      const header = JSON.parse(bytesToText(base64UrlToBytes(encodedHeader)));
+      const payload = JSON.parse(bytesToText(base64UrlToBytes(encodedPayload)));
+      const key = bundle?.keys.find((candidate) => candidate.kid === header.kid);
+      return {
+        tokenLength: tokenValue.length,
+        kid: header.kid,
+        algorithm: header.alg,
+        ticketId: payload.ticketId,
+        concertId: payload.concertId,
+        zone: payload.zone,
+        issuedAt: payload.issuedAt,
+        keyPreview: key ? keyPreview(key.publicKeyPem) : "no matching key"
+      };
+    } catch (error) {
+      return {
+        tokenLength: tokenValue.length,
+        debugError: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  function keyPreview(publicKeyPem: string) {
+    return publicKeyPem
+      .replace("-----BEGIN PUBLIC KEY-----", "")
+      .replace("-----END PUBLIC KEY-----", "")
+      .replace(/\s/g, "")
+      .slice(0, 18);
+  }
+
+  async function verifyQr(tokenValue: string, bundle = keyBundle): Promise<TicketPayload> {
+    if (!bundle) {
       throw new Error("No cached public key bundle.");
     }
     const [encodedHeader, encodedPayload, encodedSignature] = tokenValue.split(".");
@@ -230,7 +302,7 @@ export default function App() {
       throw new Error("Invalid QR token format.");
     }
     const header = JSON.parse(bytesToText(base64UrlToBytes(encodedHeader)));
-    const key = keyBundle.keys.find((candidate) => candidate.kid === header.kid);
+    const key = bundle.keys.find((candidate) => candidate.kid === header.kid);
     const alg = key?.algorithm ?? key?.alg;
     if (!key || alg !== "RS256") {
       throw new Error("No matching RS256 public key.");

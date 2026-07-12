@@ -17,8 +17,8 @@ services:
       QUEUE_ADMIT_BATCH_SIZE: ${QUEUE_ADMIT_BATCH_SIZE:-10}
       QUEUE_ADMISSION_DELAY: ${QUEUE_ADMISSION_DELAY:-1s}
       QUEUE_ADMISSION_INITIAL_DELAY: ${QUEUE_ADMISSION_INITIAL_DELAY:-1s}
-      QR_PRIVATE_KEY_PATH: ${QR_PRIVATE_KEY_PATH:-/run/secrets/qr-private.pem}
-      QR_PUBLIC_KEY_PATH: ${QR_PUBLIC_KEY_PATH:-/run/secrets/qr-public.pem}
+      QR_PRIVATE_KEY_PATH: ${QR_PRIVATE_KEY_PATH:-/app/storage/qr-private.pem}
+      QR_PUBLIC_KEY_PATH: ${QR_PUBLIC_KEY_PATH:-/app/storage/qr-public.pem}
       VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
       VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
       VNPAY_PAY_URL: ${VNPAY_PAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}

@@ -103,7 +103,9 @@ public class QrTokenService {
         }
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
-        return generator.generateKeyPair();
+        KeyPair generatedKeyPair = generator.generateKeyPair();
+        persistGeneratedKeyPair(generatedKeyPair, privatePath, publicPath);
+        return generatedKeyPair;
     }
 
     private Path path(String value) {
@@ -134,6 +136,23 @@ public class QrTokenService {
                 .replace("-----END " + type + "-----", "")
                 .replaceAll("\\s", "");
         return Base64.getDecoder().decode(pem);
+    }
+
+    private void persistGeneratedKeyPair(KeyPair keyPair, Path privatePath, Path publicPath) throws Exception {
+        if (privatePath != null) {
+            writePem(privatePath, "PRIVATE KEY", keyPair.getPrivate().getEncoded());
+        }
+        if (publicPath != null) {
+            writePem(publicPath, "PUBLIC KEY", keyPair.getPublic().getEncoded());
+        }
+    }
+
+    private void writePem(Path path, String type, byte[] der) throws Exception {
+        Path parent = path.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(path, toPem(type, der), StandardCharsets.UTF_8);
     }
 
     private String toPem(String type, byte[] der) {
