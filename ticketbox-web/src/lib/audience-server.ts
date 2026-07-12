@@ -101,6 +101,40 @@ export async function proxyProtectedRead(request: NextRequest, path: string) {
   });
 }
 
+export async function proxyProtectedStream(request: NextRequest, path: string) {
+  const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  if (!accessToken) {
+    return NextResponse.json({ message: "Authentication required" }, { status: 401 });
+  }
+
+  const backend = await fetch(`${API_BASE}${path}`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "text/event-stream"
+    }
+  });
+
+  if (!backend.ok || !backend.body) {
+    const text = await backend.text();
+    return new NextResponse(text, {
+      status: backend.status,
+      headers: {
+        "Content-Type": backend.headers.get("Content-Type") || "application/json"
+      }
+    });
+  }
+
+  return new NextResponse(backend.body, {
+    status: backend.status,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive"
+    }
+  });
+}
+
 function publicSession(auth: AuthResponse) {
   return {
     userId: auth.userId,
