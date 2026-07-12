@@ -30,7 +30,7 @@ public class RedisTokenBucketLimiter implements TokenBucketLimiter {
             local refill = math.floor((elapsed / window_ms) * capacity)
             if refill > 0 then
               tokens = math.min(capacity, tokens + refill)
-              updated_at = now_ms
+              updated_at = updated_at + math.floor(refill * (window_ms / capacity))
             end
 
             if tokens <= 0 then

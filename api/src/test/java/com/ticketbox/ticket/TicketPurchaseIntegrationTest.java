@@ -67,7 +67,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "ticketbox.auth.access-token-ttl=15m",
         "ticketbox.auth.refresh-token-ttl=7d",
         "ticketbox.queue.enabled=false",
-        "ticketbox.orders.expiry-initial-delay-ms=3600000"
+        "ticketbox.orders.expiry-initial-delay-ms=3600000",
+        "ticketbox.rate-limit.purchase.capacity=10000",
+        "ticketbox.rate-limit.defaults.capacity=10000",
+        "ticketbox.rate-limit.read.capacity=10000"
 })
 class TicketPurchaseIntegrationTest {
 

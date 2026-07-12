@@ -49,6 +49,7 @@ class NotificationWorkflowTest {
         PreEventReminderJob job = new PreEventReminderJob(
                 eventFactory,
                 new NotificationService(List.of(recordingChannel)),
+                jdbcTemplate,
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
         job.dispatchUpcomingReminders();
@@ -185,7 +186,8 @@ class NotificationWorkflowTest {
                     concert_id uuid not null,
                     status varchar(32) not null,
                     created_at timestamp not null,
-                    paid_at timestamp
+                    paid_at timestamp,
+                    reminder_sent_at timestamp
                 )
                 """);
         jdbcTemplate.execute("""

@@ -43,7 +43,10 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ticketbox.auth.jwt-secret=test-secret",
         "ticketbox.auth.access-token-ttl=15m",
         "ticketbox.auth.refresh-token-ttl=7d",
-        "ticketbox.queue.enabled=false"
+        "ticketbox.queue.enabled=false",
+        "ticketbox.rate-limit.purchase.capacity=10000",
+        "ticketbox.rate-limit.defaults.capacity=10000",
+        "ticketbox.rate-limit.read.capacity=10000"
 })
 class ApiBaselineContractIntegrationTest {
 

@@ -160,6 +160,18 @@ public class CheckerAssignmentService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assignment does not belong to checker");
         }
         audit(request.assignmentId(), checker.id(), request.deviceId(), action, request.reason());
+
+        if ("EMERGENCY_LOCAL_ACTIVATED".equals(action) && request.assignmentId() != null) {
+            jdbcTemplate.update("""
+                    update checker_gate_assignments
+                    set state = 'ACTIVE',
+                        activation_mode = 'EMERGENCY_LOCAL',
+                        activated_at = now()
+                    where id = ?
+                    """, request.assignmentId());
+            CheckerAssignmentResponse assignment = findAssignment(request.assignmentId());
+            demoteOtherActiveAssignments(assignment.concertId(), assignment.gateId(), assignment.laneId(), request.assignmentId());
+        }
     }
 
     private UUID insertAssignment(UUID concertId, CheckerAssignmentRequest request, String state) {

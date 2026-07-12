@@ -104,6 +104,7 @@ public class NotificationEventFactory {
                 join concerts c on c.id = o.concert_id
                 where o.status = 'PAID'
                   and c.status = 'PUBLISHED'
+                  and o.reminder_sent_at is null
                   and c.event_date >= ?
                   and c.event_date < ?
                 order by c.event_date, u.email
