@@ -3,6 +3,7 @@ import * as ExpoSecureStore from "expo-secure-store";
 
 export const API_BASE_STORAGE_KEY = "ticketbox.apiBaseUrl";
 export const TOKEN_STORAGE_KEY = "ticketbox.jwt";
+export const REFRESH_TOKEN_STORAGE_KEY = "ticketbox.refreshToken";
 export const CONCERT_STORAGE_KEY = "ticketbox.concertId";
 export const KEY_BUNDLE_STORAGE_KEY = "ticketbox.keyBundle";
 export const ASSIGNMENTS_STORAGE_KEY = "ticketbox.assignments";

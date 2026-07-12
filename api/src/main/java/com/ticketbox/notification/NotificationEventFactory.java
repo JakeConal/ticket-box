@@ -35,8 +35,16 @@ public class NotificationEventFactory {
                 order.orderId(),
                 order.concertId(),
                 "TicketBox purchase confirmed: " + order.concertName(),
-                "Your payment is confirmed. Your QR e-ticket(s) are attached and available in TicketBox.",
-                "/orders/" + order.orderId() + "/tickets",
+                """
+                        Your payment is confirmed.
+
+                        Concert: %s
+                        Event time: %s
+                        Order ID: %s
+
+                        Your QR e-ticket attachment is included with this email. Please keep it ready before arriving at the gate.
+                        """.formatted(order.concertName(), order.eventDate(), order.orderId()),
+                "/orders/" + order.orderId(),
                 attachments,
                 Map.of(
                         "concertName", order.concertName(),
@@ -54,7 +62,7 @@ public class NotificationEventFactory {
                 order.concertId(),
                 "Payment confirmed",
                 "Your e-ticket for " + order.concertName() + " is ready.",
-                "/orders/" + order.orderId() + "/tickets",
+                "/orders/" + order.orderId(),
                 List.of(),
                 Map.of("concertName", order.concertName()));
     }
@@ -118,7 +126,7 @@ public class NotificationEventFactory {
                             order.concertId(),
                             "Reminder: " + order.concertName() + " starts soon",
                             "Your concert starts in about 24 hours. Open your e-ticket before arriving at the gate.",
-                            "/orders/" + order.orderId() + "/tickets",
+                            "/orders/" + order.orderId(),
                             List.of(),
                             Map.of(
                                     "concertName", order.concertName(),

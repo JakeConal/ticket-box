@@ -60,6 +60,30 @@ class NotificationWorkflowTest {
     }
 
     @Test
+    void reminderJobDoesNotSendDuplicateReminderForSameOrder() {
+        UUID buyerId = insertUser("single-reminder-buyer@ticketbox.vn");
+        UUID concertId = insertConcert("Single Reminder Concert", NOW.plus(Duration.ofHours(24)), "PUBLISHED");
+        UUID orderId = insertOrder(buyerId, concertId, "PAID");
+        PreEventReminderJob job = new PreEventReminderJob(
+                eventFactory,
+                new NotificationService(List.of(recordingChannel)),
+                jdbcTemplate,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        job.dispatchUpcomingReminders();
+        job.dispatchUpcomingReminders();
+
+        assertThat(recordingChannel.events()).hasSize(1);
+        assertThat(recordingChannel.events().get(0).orderId()).isEqualTo(orderId);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*)
+                from orders
+                where id = ?
+                  and reminder_sent_at is not null
+                """, Integer.class, orderId)).isOne();
+    }
+
+    @Test
     void outboxRowSurvivesUntilWorkerDeliversIt() {
         UUID buyerId = insertUser("outbox-buyer@ticketbox.vn");
         UUID concertId = insertConcert("Outbox Concert", NOW.plus(Duration.ofDays(3)), "PUBLISHED");
@@ -86,10 +110,35 @@ class NotificationWorkflowTest {
         assertThat(delivered).isEqualTo(1);
         assertThat(recordingChannel.events()).hasSize(1);
         assertThat(recordingChannel.events().get(0).attachments()).hasSize(1);
+        assertThat(recordingChannel.events().get(0).attachments().get(0).fileName()).startsWith("ticket-");
+        assertThat(recordingChannel.events().get(0).attachments().get(0).contentType()).isEqualTo("image/png");
+        assertThat(recordingChannel.events().get(0).attachments().get(0).base64Content()).isNotBlank();
         assertThat(jdbcTemplate.queryForObject(
                 "select status from notification_outbox where order_id = ?",
                 String.class,
                 orderId)).isEqualTo("SENT");
+    }
+
+    @Test
+    void purchaseConfirmationOutboxIsIdempotentForDuplicateEnqueue() {
+        UUID buyerId = insertUser("duplicate-outbox-buyer@ticketbox.vn");
+        UUID concertId = insertConcert("Duplicate Outbox Concert", NOW.plus(Duration.ofDays(3)), "PUBLISHED");
+        UUID orderId = insertOrder(buyerId, concertId, "PAID");
+        insertTicket(orderId, buyerId);
+        NotificationOutboxService outboxService = new NotificationOutboxService(
+                jdbcTemplate,
+                new ObjectMapper(),
+                eventFactory);
+
+        outboxService.enqueuePurchaseConfirmation(orderId);
+        outboxService.enqueuePurchaseConfirmation(orderId);
+
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*)
+                from notification_outbox
+                where order_id = ?
+                  and event_type = 'PURCHASE_CONFIRMATION'
+                """, Integer.class, orderId)).isOne();
     }
 
     private UUID insertUser(String email) {
@@ -226,6 +275,10 @@ class NotificationWorkflowTest {
                     sent_at timestamp,
                     last_attempt_at timestamp
                 )
+                """);
+        jdbcTemplate.execute("""
+                create unique index ux_notification_outbox_purchase_confirmation
+                on notification_outbox(order_id, event_type)
                 """);
     }
 

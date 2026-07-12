@@ -4,11 +4,25 @@ import { CameraView } from "expo-camera";
 import { Assignment } from "../types";
 import styles from "../styles";
 
+export type ScanFeedbackResult = {
+  tone: "success" | "error";
+  title: string;
+  subtitle: string;
+  mark?: string;
+};
+
+type ScanFeedbackState = {
+  tone: "pending" | "success" | "error";
+  title: string;
+  subtitle: string;
+  mark: string;
+};
+
 type ScanTabProps = {
   activeAssignment: Assignment | undefined;
   mockScanToken: string;
   setMockScanToken: (val: string) => void;
-  onScan: (payload: { data: string }) => void;
+  onScan: (payload: { data: string }) => Promise<ScanFeedbackResult | void> | ScanFeedbackResult | void;
   hasCameraPermission: boolean | null;
   onRefresh: () => void;
   onEmergencyActivate: () => void;
@@ -25,6 +39,12 @@ export function ScanTab({
 }: ScanTabProps) {
   const [isMinimized, setIsMinimized] = useState(true);
   const [scanFeedbackVisible, setScanFeedbackVisible] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<ScanFeedbackState>({
+    tone: "pending",
+    title: "QR SCANNED",
+    subtitle: "Verifying ticket...",
+    mark: "OK"
+  });
   const flashOpacity = useRef(new Animated.Value(0)).current;
   const pulseScale = useRef(new Animated.Value(0.9)).current;
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -39,48 +59,10 @@ export function ScanTab({
     };
   }, []);
 
-  const triggerScanFeedback = useCallback(() => {
-    if (scanFeedbackActive.current) {
-      return;
-    }
-
-    scanFeedbackActive.current = true;
-
+  const scheduleFeedbackDismiss = useCallback((delay = 1500) => {
     if (scanFeedbackTimer.current) {
       clearTimeout(scanFeedbackTimer.current);
     }
-
-    setScanFeedbackVisible(true);
-    AccessibilityInfo.announceForAccessibility("QR scanned. Verifying ticket.");
-    flashOpacity.setValue(0);
-    pulseScale.setValue(0.9);
-    toastOpacity.setValue(0);
-
-    Animated.parallel([
-      Animated.sequence([
-        Animated.timing(flashOpacity, {
-          toValue: 0.78,
-          duration: 90,
-          useNativeDriver: true
-        }),
-        Animated.timing(flashOpacity, {
-          toValue: 0,
-          duration: 240,
-          useNativeDriver: true
-        })
-      ]),
-      Animated.spring(pulseScale, {
-        toValue: 1,
-        friction: 6,
-        tension: 120,
-        useNativeDriver: true
-      }),
-      Animated.timing(toastOpacity, {
-        toValue: 1,
-        duration: 140,
-        useNativeDriver: true
-      })
-    ]).start();
 
     scanFeedbackTimer.current = setTimeout(() => {
       Animated.timing(toastOpacity, {
@@ -91,15 +73,86 @@ export function ScanTab({
         setScanFeedbackVisible(false);
         scanFeedbackActive.current = false;
       });
-    }, 1500);
-  }, [flashOpacity, pulseScale, toastOpacity]);
+    }, delay);
+  }, [toastOpacity]);
+
+  const showScanFeedback = useCallback((nextFeedback: ScanFeedbackState, autoDismiss = false) => {
+    if (scanFeedbackTimer.current) {
+      clearTimeout(scanFeedbackTimer.current);
+    }
+
+    const shouldAnimateIn = !scanFeedbackActive.current;
+    scanFeedbackActive.current = true;
+    setScanFeedback(nextFeedback);
+    setScanFeedbackVisible(true);
+    AccessibilityInfo.announceForAccessibility(`${nextFeedback.title}. ${nextFeedback.subtitle}`);
+
+    if (shouldAnimateIn) {
+      flashOpacity.setValue(0);
+      pulseScale.setValue(0.9);
+      toastOpacity.setValue(0);
+
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(flashOpacity, {
+            toValue: 0.78,
+            duration: 90,
+            useNativeDriver: true
+          }),
+          Animated.timing(flashOpacity, {
+            toValue: 0,
+            duration: 240,
+            useNativeDriver: true
+          })
+        ]),
+        Animated.spring(pulseScale, {
+          toValue: 1,
+          friction: 6,
+          tension: 120,
+          useNativeDriver: true
+        }),
+        Animated.timing(toastOpacity, {
+          toValue: 1,
+          duration: 140,
+          useNativeDriver: true
+        })
+      ]).start();
+    } else {
+      toastOpacity.setValue(1);
+      pulseScale.setValue(1);
+    }
+
+    if (autoDismiss) {
+      scheduleFeedbackDismiss();
+    }
+  }, [flashOpacity, pulseScale, scheduleFeedbackDismiss, toastOpacity]);
 
   const handleScanCaptured = useCallback(
-    (payload: { data: string }) => {
-      triggerScanFeedback();
-      onScan(payload);
+    async (payload: { data: string }) => {
+      if (scanFeedbackActive.current) {
+        return;
+      }
+
+      showScanFeedback({
+        tone: "pending",
+        title: "QR SCANNED",
+        subtitle: "Verifying ticket...",
+        mark: "OK"
+      });
+
+      const result = await onScan(payload);
+      if (result) {
+        showScanFeedback({
+          tone: result.tone,
+          title: result.title,
+          subtitle: result.subtitle,
+          mark: result.mark ?? (result.tone === "success" ? "OK" : "FAIL")
+        }, true);
+      } else {
+        scheduleFeedbackDismiss(900);
+      }
     },
-    [onScan, triggerScanFeedback]
+    [onScan, scheduleFeedbackDismiss, showScanFeedback]
   );
 
   return (
@@ -189,17 +242,25 @@ export function ScanTab({
                 accessibilityLiveRegion="polite"
                 style={[
                   styles.scanCaptureOverlay,
+                  scanFeedback.tone === "success" && styles.scanCaptureOverlaySuccess,
+                  scanFeedback.tone === "error" && styles.scanCaptureOverlayError,
                   {
                     opacity: toastOpacity,
                     transform: [{ scale: pulseScale }]
                   }
                 ]}
               >
-                <View style={styles.scanCaptureMark}>
-                  <Text style={styles.scanCaptureMarkText}>OK</Text>
+                <View style={[
+                  styles.scanCaptureMark,
+                  scanFeedback.tone === "error" && styles.scanCaptureMarkError
+                ]}>
+                  <Text style={styles.scanCaptureMarkText}>{scanFeedback.mark}</Text>
                 </View>
-                <Text style={styles.scanCaptureTitle}>QR SCANNED</Text>
-                <Text style={styles.scanCaptureSubtitle}>Verifying ticket...</Text>
+                <Text style={styles.scanCaptureTitle}>{scanFeedback.title}</Text>
+                <Text style={[
+                  styles.scanCaptureSubtitle,
+                  scanFeedback.tone === "error" && styles.scanCaptureSubtitleError
+                ]}>{scanFeedback.subtitle}</Text>
               </Animated.View>
             )}
           </View>
@@ -213,9 +274,13 @@ export function ScanTab({
       {Platform.OS === 'web' && scanFeedbackVisible && (
         <Animated.View
           accessibilityLiveRegion="polite"
-          style={[styles.scanInlineNotice, { opacity: toastOpacity }]}
+          style={[
+            styles.scanInlineNotice,
+            scanFeedback.tone === "error" && styles.scanInlineNoticeError,
+            { opacity: toastOpacity }
+          ]}
         >
-          <Text style={styles.scanInlineNoticeText}>QR SCANNED - VERIFYING TICKET...</Text>
+          <Text style={styles.scanInlineNoticeText}>{scanFeedback.title} - {scanFeedback.subtitle}</Text>
         </Animated.View>
       )}
 

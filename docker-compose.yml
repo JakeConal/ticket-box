@@ -37,13 +37,19 @@ services:
       ARTIST_PDF_MAX_EXTRACTED_CHARS: ${ARTIST_PDF_MAX_EXTRACTED_CHARS:-40000}
       ARTIST_BIO_MAX_PROMPT_CHARS: ${ARTIST_BIO_MAX_PROMPT_CHARS:-20000}
       ARTIST_PDF_EXTRACTION_TIMEOUT: ${ARTIST_PDF_EXTRACTION_TIMEOUT:-10s}
-      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-false}
+      SMTP_STARTTLS_ENABLE: ${SMTP_STARTTLS_ENABLE:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     ports:
       - "8080:8080"
     volumes:
@@ -90,6 +96,12 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+
+  mailpit:
+    image: axllent/mailpit:v1.22
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   nginx:
     image: nginx:1.29-alpine

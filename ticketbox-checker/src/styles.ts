@@ -273,6 +273,12 @@ export const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 0,
   },
+  scanCaptureOverlaySuccess: {
+    backgroundColor: '#dcfce7',
+  },
+  scanCaptureOverlayError: {
+    backgroundColor: '#fee2e2',
+  },
   scanCaptureMark: {
     width: 42,
     height: 42,
@@ -283,6 +289,9 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+  },
+  scanCaptureMarkError: {
+    backgroundColor: '#dc2626',
   },
   scanCaptureMarkText: {
     color: '#ffffff',
@@ -303,6 +312,9 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 2,
   },
+  scanCaptureSubtitleError: {
+    color: '#7f1d1d',
+  },
   scanInlineNotice: {
     borderColor: '#0a0a0a',
     borderWidth: 2,
@@ -314,6 +326,9 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
+  },
+  scanInlineNoticeError: {
+    backgroundColor: '#fee2e2',
   },
   scanInlineNoticeText: {
     color: '#0a0a0a',

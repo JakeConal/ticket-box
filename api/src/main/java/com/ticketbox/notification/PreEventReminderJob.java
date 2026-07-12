@@ -36,12 +36,15 @@ public class PreEventReminderJob {
         Instant windowEnd = now.plus(Duration.ofHours(26));
         for (NotificationEvent event : eventFactory.reminderEvents(windowStart, windowEnd)) {
             if (event.orderId() != null) {
-                notificationService.send(event);
-                jdbcTemplate.update("""
+                int updated = jdbcTemplate.update("""
                         update orders
                         set reminder_sent_at = ?
                         where id = ?
+                          and reminder_sent_at is null
                         """, Timestamp.from(now), event.orderId());
+                if (updated == 1) {
+                    notificationService.send(event);
+                }
             }
         }
     }
