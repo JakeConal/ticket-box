@@ -51,6 +51,7 @@ typings/
 
 # Optional npm cache directory
 .npm
+.pnpm-store/
 
 # Optional eslint cache
 .eslintcache
@@ -126,21 +127,41 @@ Thumbs.db
 # Build output
 dist/
 build/
+.turbo/
+.vercel/
 
-# Expo local state
+# Expo and mobile build state
 .expo/
 **/.expo/
-ticketbox-checker/*.apk
+**/.expo-shared/
+**/web-build/
+**/expo-env.d.ts
+*.apk
+*.aab
+*.ipa
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
 
-# Local checker credentials and generated test data
+# Local runtime data and credentials
 api/keys/
 latest-valid-jwt.txt
-imports/vip/processed/*
-!imports/vip/processed/vip-guests-sample.csv
+imports/
+temp/
+tmp/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
 
 # Gradle generated state
 .gradle/
 **/.gradle/
+**/.cxx/
+**/local.properties
+hs_err_pid*
+*.hprof
 
 # Ngrok
 ngrok/
