@@ -30,8 +30,8 @@ public class VipGuestService {
 
     public List<VipGuestResponse> search(UUID concertId, String query) {
         String trimmed = query == null ? "" : query.trim();
-        if (trimmed.length() < 2) {
-            return List.of();
+        if (trimmed.isEmpty()) {
+            return getVipGuestsByConcert(concertId);
         }
         String phoneQuery = phoneNormalizer.normalize(trimmed).orElse("");
         String foldedQuery = fold(trimmed);

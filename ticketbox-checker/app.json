@@ -5,8 +5,16 @@
     "version": "0.0.1",
     "orientation": "portrait",
     "scheme": "ticketboxchecker",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Ticketbox Checker to scan ticket QR codes at the gate."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "vn.ticketbox.checker"
