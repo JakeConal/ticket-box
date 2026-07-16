@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -86,17 +85,15 @@ public class CheckinService {
             }
             return invalid(scan, "client_scan_id already belongs to a different ticket");
         }
-        try {
-            Instant checkedInAt = insertCheckin(checkerId, scan);
-            return ok(scan, checkedInAt, "Checked in");
-        } catch (DataIntegrityViolationException ex) {
-            return conflict(checkerId, scan);
-        }
+        Optional<Instant> checkedInAt = insertCheckin(checkerId, scan);
+        return checkedInAt
+                .map(value -> ok(scan, value, "Checked in"))
+                .orElseGet(() -> conflict(checkerId, scan));
     }
 
-    private Instant insertCheckin(UUID checkerId, Scan scan) {
+    private Optional<Instant> insertCheckin(UUID checkerId, Scan scan) {
         Instant scannedAt = scan.scannedAt();
-        jdbcTemplate.update("""
+        int inserted = jdbcTemplate.update("""
                 insert into checkins (
                     client_scan_id,
                     ticket_id,
@@ -108,6 +105,7 @@ public class CheckinService {
                     scanned_at_device
                 )
                 values (?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict do nothing
                 """,
                 scan.clientScanId(),
                 scan.ticketId(),
@@ -117,9 +115,12 @@ public class CheckinService {
                 blankToNull(scan.laneId()),
                 normalize(scan.zone()),
                 Timestamp.from(scannedAt));
-        return findByClientScanId(scan.clientScanId())
+        if (inserted == 0) {
+            return Optional.empty();
+        }
+        return Optional.of(findByClientScanId(scan.clientScanId())
                 .map(ExistingCheckin::checkedInAt)
-                .orElse(scannedAt);
+                .orElse(scannedAt));
     }
 
     private CheckinResultResponse conflict(UUID checkerId, Scan scan) {

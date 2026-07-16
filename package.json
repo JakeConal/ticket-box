@@ -6,7 +6,8 @@
     "web:dev": "pnpm --filter ticketbox-web dev",
     "web:build": "pnpm --filter ticketbox-web build",
     "web:start": "pnpm --filter ticketbox-web start",
-    "checker:start": "pnpm --filter ticketbox-checker start",
-    "checker:typecheck": "pnpm --filter ticketbox-checker typecheck"
+    "checker:start": "npm --prefix ticketbox-checker start",
+    "checker:test": "npm --prefix ticketbox-checker test",
+    "checker:typecheck": "npm --prefix ticketbox-checker run typecheck"
   }
 }

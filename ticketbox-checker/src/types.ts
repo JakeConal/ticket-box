@@ -1,5 +1,21 @@
 export type Tab = "scan" | "sync" | "vip";
 
+export type ConcertOption = {
+  id: string;
+  name: string;
+  venue: string;
+  eventDate: string;
+  eventCode: string;
+};
+
+export type NoticeTone = "info" | "success" | "warning" | "error";
+
+export type AppNotice = {
+  id: number;
+  tone: NoticeTone;
+  message: string;
+};
+
 export type Assignment = {
   id: string;
   concertId: string;
@@ -13,6 +29,8 @@ export type Assignment = {
 
 export type KeyBundle = {
   concertId: string;
+  validFrom?: string;
+  validUntil?: string;
   keys: { kid: string; alg?: string; algorithm?: string; publicKeyPem: string }[];
 };
 
@@ -21,6 +39,8 @@ export type TicketPayload = {
   concertId: string;
   zone: string;
 };
+
+export type LocalCheckinStatus = "PENDING_SYNC" | "SYNCED" | "CONFLICT" | "REJECTED";
 
 export type LocalCheckin = {
   client_scan_id: string;
@@ -31,7 +51,8 @@ export type LocalCheckin = {
   gate_id: string;
   lane_id: string | null;
   zone: string;
-  sync_status: "PENDING_SYNC" | "SYNCED" | "CONFLICT";
+  sync_status: LocalCheckinStatus;
+  sync_message: string | null;
 };
 
 export type LocalAssignmentAudit = {
@@ -42,4 +63,13 @@ export type LocalAssignmentAudit = {
   reason: string | null;
   created_at: string;
   sync_status: "PENDING_SYNC" | "SYNCED";
+};
+
+export type VipGuest = {
+  id: string;
+  name: string;
+  zone: string;
+  phoneMasked?: string | null;
+  entered: boolean;
+  enteredAt?: string | null;
 };

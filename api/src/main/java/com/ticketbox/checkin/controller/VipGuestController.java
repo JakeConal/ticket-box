@@ -25,7 +25,7 @@ public class VipGuestController {
     @GetMapping
     List<VipGuestResponse> search(
             @RequestParam UUID concertId,
-            @RequestParam("q") String query) {
+            @RequestParam(value = "q", required = false, defaultValue = "") String query) {
         return vipGuestService.search(concertId, query);
     }
 

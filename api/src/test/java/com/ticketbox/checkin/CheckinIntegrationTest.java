@@ -287,6 +287,11 @@ class CheckinIntegrationTest {
                 """, guestId, concertId, Instant.now(), Instant.now());
         String token = tokenFor(checker);
 
+        TestResponse allGuests = getJson("/api/vip-guests?concertId=" + concertId + "&q=", token);
+        assertThat(allGuests.status()).isEqualTo(HttpStatus.OK.value());
+        assertThat(allGuests.json().size()).isEqualTo(1);
+        assertThat(allGuests.json().get(0).get("name").asText()).isEqualTo("Nguyen Van A");
+
         TestResponse search = getJson("/api/vip-guests?concertId=" + concertId + "&q=Nguyen", token);
         assertThat(search.status()).isEqualTo(HttpStatus.OK.value());
         assertThat(search.json().size()).isEqualTo(1);

@@ -130,6 +130,13 @@ build/
 # Expo local state
 .expo/
 **/.expo/
+ticketbox-checker/*.apk
+
+# Local checker credentials and generated test data
+api/keys/
+latest-valid-jwt.txt
+imports/vip/processed/*
+!imports/vip/processed/vip-guests-sample.csv
 
 # Gradle generated state
 .gradle/

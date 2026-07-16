@@ -24,8 +24,16 @@ function createWebMockDb() {
             gate_id,
             lane_id,
             zone,
-            sync_status: params[8] || "PENDING_SYNC"
+            sync_status: params[8] || "PENDING_SYNC",
+            sync_message: params[9] || null
           });
+        }
+      } else if (sql.includes("update local_checkins set sync_status = ?, sync_message = ?")) {
+        const [status, message, client_scan_id] = params;
+        const item = inMemoryCheckins.find(c => c.client_scan_id === client_scan_id);
+        if (item) {
+          item.sync_status = status;
+          item.sync_message = message;
         }
       } else if (sql.includes("update local_checkins set sync_status = ?")) {
         const [status, client_scan_id] = params;
@@ -56,6 +64,12 @@ function createWebMockDb() {
         if (item) {
           item.sync_status = status;
         }
+      } else if (sql.includes("update local_assignment_audits set sync_status = 'SYNCED'")) {
+        const [id] = params;
+        const item = inMemoryAudits.find(a => a.id === id);
+        if (item) {
+          item.sync_status = "SYNCED";
+        }
       }
     },
     getFirstSync<T>(sql: string, params: any[]): T | null {
@@ -80,9 +94,10 @@ function createWebMockDb() {
             .filter(a => a.sync_status === "PENDING_SYNC")
             .sort((a, b) => a.created_at.localeCompare(b.created_at)) as unknown as T[]);
         }
-        return (inMemoryCheckins
+        const pending = inMemoryCheckins
           .filter(c => c.sync_status === "PENDING_SYNC")
-          .sort((a, b) => a.scanned_at.localeCompare(b.scanned_at)) as unknown as T[]);
+          .sort((a, b) => a.scanned_at.localeCompare(b.scanned_at));
+        return ((sql.includes("limit 250") ? pending.slice(0, 250) : pending) as unknown as T[]);
       }
       // default: select * from local_checkins order by scanned_at desc limit 50
       return ([...inMemoryCheckins]
@@ -105,9 +120,15 @@ export function initDb() {
       gate_id text not null,
       lane_id text,
       zone text not null,
-      sync_status text not null
+      sync_status text not null,
+      sync_message text
     );
   `);
+  try {
+    db.execSync("alter table local_checkins add column sync_message text;");
+  } catch {
+    // Existing installations already have the column after the first migration run.
+  }
   db.execSync(`
     create table if not exists local_assignment_audits (
       id text primary key,
