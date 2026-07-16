@@ -10,6 +10,8 @@ public interface QueueStore {
 
     void add(String key, String member, double score);
 
+    boolean remove(String key, String member);
+
     Optional<Long> rank(String key, String member);
 
     List<String> popMin(String key, int count);
@@ -17,6 +19,8 @@ public interface QueueStore {
     void setValue(String key, String value, Duration ttl);
 
     Optional<String> getValue(String key);
+
+    void deleteValue(String key);
 
     void expire(String key, Duration ttl);
 }

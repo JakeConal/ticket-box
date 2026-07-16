@@ -9,7 +9,7 @@ import { ui } from "../../components/ui";
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("audience1@ticketbox.vn");
-  const [password, setPassword] = useState("password123");
+  const [password, setPassword] = useState("password");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,5 +60,6 @@ export default function LoginPage() {
 }
 
 function nextPath() {
-  return new URLSearchParams(window.location.search).get("next") || "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next?.startsWith("/") && !next.startsWith("//") ? next : "/";
 }

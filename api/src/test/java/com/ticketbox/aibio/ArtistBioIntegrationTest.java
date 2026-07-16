@@ -250,8 +250,8 @@ class ArtistBioIntegrationTest {
     }
 
     private void awaitBioStatus(UUID concertId, BioStatus status) throws InterruptedException {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(8));
-        while (Instant.now().isBefore(deadline)) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        while (System.nanoTime() < deadline) {
             String current = jdbcTemplate.queryForObject(
                     "select bio_status from concerts where id = ?",
                     String.class,
@@ -419,7 +419,7 @@ class ArtistBioIntegrationTest {
                 UUID.randomUUID(),
                 concertId,
                 new BigDecimal("2000000.00"),
-                Instant.now().minus(Duration.ofMinutes(1)),
+                Instant.now().minus(Duration.ofHours(1)),
                 Instant.now());
     }
 

@@ -108,6 +108,50 @@ class VipGuestImportServiceTest {
     }
 
     @Test
+    void invalidRowsDoNotDeactivateGuestsMissingFromAnIncompleteSnapshot() throws IOException {
+        UUID ownerId = UUID.randomUUID();
+        UUID concertId = createConcert("CONCERT-SAFE-SNAPSHOT", ownerId);
+        UUID retainedGuest = insertVipGuest(concertId, "Retained Guest", "84902222222", true, false);
+        insertVipGuest(concertId, "Updated Guest", "84901111111", true, false);
+
+        writeCsv("incomplete-snapshot.csv", """
+                event_code,name,phone,sponsor,zone
+                CONCERT-SAFE-SNAPSHOT,Updated Guest,0901 111 111,Brand A,SVIP
+                CONCERT-SAFE-SNAPSHOT,Broken Guest,not-a-phone,Brand A,VIP
+                """);
+
+        VipGuestImportSummaryResponse summary = importService.processPendingImports(Optional.empty()).getFirst();
+
+        assertThat(summary.updated()).isEqualTo(1);
+        assertThat(summary.skipped()).isEqualTo(1);
+        assertThat(summary.deactivated()).isZero();
+        assertThat(summary.message()).contains("deactivation was skipped");
+        assertThat(isActive(retainedGuest)).isTrue();
+    }
+
+    @Test
+    void missingEventCodeDoesNotDeactivateGuestsFromAPartialSnapshot() throws IOException {
+        UUID ownerId = UUID.randomUUID();
+        UUID concertId = createConcert("CONCERT-MISSING-SCOPE", ownerId);
+        UUID retainedGuest = insertVipGuest(concertId, "Retained Guest", "84902222222", true, false);
+        insertVipGuest(concertId, "Updated Guest", "84901111111", true, false);
+
+        writeCsv("missing-scope.csv", """
+                event_code,name,phone,sponsor,zone
+                CONCERT-MISSING-SCOPE,Updated Guest,0901 111 111,Brand A,SVIP
+                ,Unknown Scope Guest,0902 222 222,Brand A,VIP
+                """);
+
+        VipGuestImportSummaryResponse summary = importService.processPendingImports(Optional.empty()).getFirst();
+
+        assertThat(summary.updated()).isEqualTo(1);
+        assertThat(summary.skipped()).isEqualTo(1);
+        assertThat(summary.deactivated()).isZero();
+        assertThat(summary.message()).contains("deactivation was skipped");
+        assertThat(isActive(retainedGuest)).isTrue();
+    }
+
+    @Test
     void unknownEventCodeFileIsQuarantinedWithoutRecordingHash() throws IOException {
         writeCsv("unknown.csv", """
                 event_code,name,phone,sponsor,zone
@@ -124,26 +168,83 @@ class VipGuestImportServiceTest {
     }
 
     @Test
-    void manualImportSkipsRowsForUnownedConcerts() throws IOException {
+    void manualImportProcessesFilesOwnedByOrganizer() throws IOException {
         UUID ownerA = UUID.randomUUID();
-        UUID ownerB = UUID.randomUUID();
         createConcert("OWNED", ownerA);
-        createConcert("UNOWNED", ownerB);
         writeCsv("manual.csv", """
                 event_code,name,phone,sponsor,zone
                 OWNED,Owned Guest,0901 111 111,Brand A,SVIP
-                UNOWNED,Unowned Guest,0902 222 222,Brand B,VIP
                 """);
 
         VipGuestImportSummaryResponse summary = importService.processPendingImports(Optional.of(ownerA)).getFirst();
 
         assertThat(summary.inserted()).isEqualTo(1);
-        assertThat(summary.skipped()).isEqualTo(1);
+        assertThat(summary.skipped()).isZero();
         assertThat(countGuests()).isEqualTo(1);
         assertThat(phoneFor("Owned Guest")).isEqualTo("84901111111");
-        assertThat(jdbcTemplate.queryForObject(
-                "select count(*) from vip_guests where name = 'Unowned Guest'",
-                Integer.class)).isZero();
+    }
+
+    @Test
+    void organizerDirectoryImportLeavesMixedOwnershipFilePending() throws IOException {
+        UUID ownerA = UUID.randomUUID();
+        UUID ownerB = UUID.randomUUID();
+        createConcert("OWNER-A", ownerA);
+        createConcert("OWNER-B", ownerB);
+        Path file = writeCsv("mixed-owners.csv", """
+                event_code,name,phone,sponsor,zone
+                OWNER-A,Owned Guest,0901 111 111,Brand A,SVIP
+                OWNER-B,Other Guest,0902 222 222,Brand B,VIP
+                """);
+
+        VipGuestImportSummaryResponse summary = importService.processPendingImports(Optional.of(ownerA)).getFirst();
+
+        assertThat(summary.archived()).isFalse();
+        assertThat(summary.message()).contains("another organizer");
+        assertThat(countGuests()).isZero();
+        assertThat(Files.exists(file)).isTrue();
+    }
+
+    @Test
+    void uploadedImportRejectsEventCodeOutsideSelectedConcert() throws IOException {
+        UUID ownerId = UUID.randomUUID();
+        UUID selectedConcert = createConcert("SELECTED-EVENT", ownerId);
+        createConcert("OTHER-EVENT", ownerId);
+        Path file = writeCsv("wrong-event.csv", """
+                event_code,name,phone,sponsor,zone
+                OTHER-EVENT,Wrong Event Guest,0901 111 111,Brand A,SVIP
+                """);
+
+        VipGuestImportSummaryResponse summary = importService.processUploadedImport(
+                file,
+                "wrong-event.csv",
+                ownerId,
+                selectedConcert);
+
+        assertThat(summary.archive()).isEqualTo("error");
+        assertThat(summary.message()).contains("does not match the selected concert");
+        assertThat(countGuests()).isZero();
+        assertThat(Files.exists(IMPORT_DIR.resolve("error").resolve("wrong-event.csv"))).isTrue();
+    }
+
+    @Test
+    void uploadedImportRejectsRowsWithoutEventCode() throws IOException {
+        UUID ownerId = UUID.randomUUID();
+        UUID selectedConcert = createConcert("SELECTED-EVENT", ownerId);
+        Path file = writeCsv("missing-event.csv", """
+                event_code,name,phone,sponsor,zone
+                SELECTED-EVENT,Valid Guest,0901 111 111,Brand A,SVIP
+                ,Missing Event Guest,0902 222 222,Brand A,VIP
+                """);
+
+        VipGuestImportSummaryResponse summary = importService.processUploadedImport(
+                file,
+                "missing-event.csv",
+                ownerId,
+                selectedConcert);
+
+        assertThat(summary.archive()).isEqualTo("error");
+        assertThat(summary.message()).contains("missing event_code");
+        assertThat(countGuests()).isZero();
     }
 
     private UUID createConcert(String eventCode, UUID ownerId) {
@@ -216,8 +317,10 @@ class VipGuestImportServiceTest {
         return Boolean.TRUE.equals(jdbcTemplate.queryForObject("select entered from vip_guests where id = ?", Boolean.class, id));
     }
 
-    private void writeCsv(String fileName, String content) throws IOException {
-        Files.writeString(IMPORT_DIR.resolve(fileName), content);
+    private Path writeCsv(String fileName, String content) throws IOException {
+        Path path = IMPORT_DIR.resolve(fileName);
+        Files.writeString(path, content);
+        return path;
     }
 
     private void cleanDirectory(Path directory) throws IOException {

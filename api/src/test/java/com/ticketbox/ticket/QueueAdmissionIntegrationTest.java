@@ -15,12 +15,15 @@ import com.ticketbox.ticket.service.TicketPurchaseService;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +63,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 })
 class QueueAdmissionIntegrationTest {
 
+    private static final Instant NOW = Instant.parse("2026-07-16T00:00:00Z");
+
     @Autowired
     private QueueAdmissionService queueAdmissionService;
 
@@ -83,8 +88,12 @@ class QueueAdmissionIntegrationTest {
     @Qualifier("testQueueConcertCache")
     private InMemoryConcertCache concertCache;
 
+    @Autowired
+    private MutableClock clock;
+
     @BeforeEach
     void resetData() {
+        clock.reset();
         createAuxiliaryTables();
         jdbcTemplate.execute("delete from notification_outbox");
         jdbcTemplate.execute("delete from order_items");
@@ -101,10 +110,9 @@ class QueueAdmissionIntegrationTest {
     }
 
     @Test
-    void queueAdmissionIsFifoAndBatchSizeBoundsNewAdmissions() throws Exception {
+    void queueAdmissionIsFifoAndBatchSizeBoundsNewAdmissions() {
         UUID concertId = createPublishedConcert("QUEUE-FIFO");
         User first = saveUser("queue-first@ticketbox.vn", UserRole.AUDIENCE);
-        Thread.sleep(5);
         User second = saveUser("queue-second@ticketbox.vn", UserRole.AUDIENCE);
 
         QueueStatusResponse firstStatus = queueAdmissionService.enterQueue(concertId, UserPrincipal.from(first));
@@ -145,7 +153,7 @@ class QueueAdmissionIntegrationTest {
     }
 
     @Test
-    void expiredAdmissionTokenIsRejected() throws Exception {
+    void expiredAdmissionTokenIsRejected() {
         UUID concertId = createPublishedConcert("QUEUE-EXPIRED");
         User buyer = saveUser("expired-admission@ticketbox.vn", UserRole.AUDIENCE);
         UserPrincipal principal = UserPrincipal.from(buyer);
@@ -153,7 +161,7 @@ class QueueAdmissionIntegrationTest {
         queueAdmissionService.enterQueue(concertId, principal);
         queueAdmissionService.admitNextBatch(concertId);
         String token = queueAdmissionService.status(concertId, principal).admissionToken();
-        Thread.sleep(3500);
+        clock.advance(Duration.ofSeconds(4));
 
         assertThatThrownBy(() -> queueAdmissionService.requireAdmissionIfActive(concertId, principal, token))
                 .isInstanceOf(ResponseStatusException.class)
@@ -161,10 +169,31 @@ class QueueAdmissionIntegrationTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void leavingQueueRemovesWaitingAndAdmittedAccessUntilUserReenters() {
+        UUID concertId = createPublishedConcert("QUEUE-LEAVE");
+        User buyer = saveUser("leave-queue@ticketbox.vn", UserRole.AUDIENCE);
+        UserPrincipal principal = UserPrincipal.from(buyer);
+
+        queueAdmissionService.enterQueue(concertId, principal);
+        queueAdmissionService.leaveQueue(concertId, principal);
+
+        assertThatThrownBy(() -> queueAdmissionService.status(concertId, principal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(queueAdmissionService.admitNextBatch(concertId)).isZero();
+
+        QueueStatusResponse reentered = queueAdmissionService.enterQueue(concertId, principal);
+        assertThat(reentered.position()).isEqualTo(1);
+        assertThat(queueAdmissionService.admitNextBatch(concertId)).isEqualTo(1);
+        assertThat(queueAdmissionService.status(concertId, principal).admitted()).isTrue();
+    }
+
     private UUID createPublishedConcert(String eventCode) {
         User organizer = saveUser(eventCode.toLowerCase() + "@ticketbox.vn", UserRole.ORGANIZER);
         UUID concertId = UUID.randomUUID();
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         jdbcTemplate.update("""
                 insert into concerts (
                     id,
@@ -218,8 +247,8 @@ class QueueAdmissionIntegrationTest {
                 ticketTypeId,
                 concertId,
                 new BigDecimal("3500000.00"),
-                Instant.now().minus(Duration.ofMinutes(1)),
-                Instant.now());
+                clock.instant().minus(Duration.ofMinutes(1)),
+                clock.instant());
         return ticketTypeId;
     }
 
@@ -229,7 +258,7 @@ class QueueAdmissionIntegrationTest {
                 email,
                 passwordEncoder.encode("password123"),
                 role,
-                Instant.now()));
+                clock.instant()));
     }
 
     private void authenticate(UserPrincipal principal) {
@@ -316,6 +345,40 @@ class QueueAdmissionIntegrationTest {
         InMemoryConcertCache testQueueConcertCache(ObjectMapper objectMapper) {
             return new InMemoryConcertCache(objectMapper);
         }
+
+        @Bean
+        @Primary
+        MutableClock testQueueClock() {
+            return new MutableClock();
+        }
+    }
+
+    static class MutableClock extends java.time.Clock {
+
+        private final AtomicReference<Instant> current = new AtomicReference<>(NOW);
+
+        void reset() {
+            current.set(NOW);
+        }
+
+        void advance(Duration duration) {
+            current.updateAndGet(value -> value.plus(duration));
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public java.time.Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return current.get();
+        }
     }
 
     static class InMemoryQueueStore implements QueueStore {
@@ -331,6 +394,12 @@ class QueueAdmissionIntegrationTest {
         @Override
         public void add(String key, String member, double score) {
             queues.computeIfAbsent(key, ignored -> new ConcurrentHashMap<>()).put(member, score);
+        }
+
+        @Override
+        public boolean remove(String key, String member) {
+            Map<String, Double> queue = queues.get(key);
+            return queue != null && queue.remove(member) != null;
         }
 
         @Override
@@ -375,6 +444,11 @@ class QueueAdmissionIntegrationTest {
                 return Optional.empty();
             }
             return Optional.of(value.value());
+        }
+
+        @Override
+        public void deleteValue(String key) {
+            values.remove(key);
         }
 
         @Override

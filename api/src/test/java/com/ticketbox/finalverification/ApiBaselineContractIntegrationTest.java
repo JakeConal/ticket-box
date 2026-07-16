@@ -168,7 +168,7 @@ class ApiBaselineContractIntegrationTest {
         String organizerToken = tokenFor(saveUser("seller@ticketbox.vn", UserRole.ORGANIZER));
         String audienceToken = tokenFor(saveUser("buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createDraftConcert(organizerToken, "Purchase Contract", "PURCHASE-CONTRACT");
-        UUID ticketTypeId = createTicketType(organizerToken, concertId, Instant.now().minus(Duration.ofMinutes(5)));
+        UUID ticketTypeId = createTicketType(organizerToken, concertId, Instant.now().minus(Duration.ofHours(1)));
         assertThat(postJson("/api/admin/concerts/" + concertId + "/publish", organizerToken, Map.of()).status())
                 .isEqualTo(HttpStatus.OK.value());
 

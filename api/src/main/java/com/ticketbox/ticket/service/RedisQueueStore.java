@@ -29,6 +29,12 @@ public class RedisQueueStore implements QueueStore {
     }
 
     @Override
+    public boolean remove(String key, String member) {
+        Long removed = redisTemplate.opsForZSet().remove(key, member);
+        return removed != null && removed > 0;
+    }
+
+    @Override
     public Optional<Long> rank(String key, String member) {
         return Optional.ofNullable(redisTemplate.opsForZSet().rank(key, member));
     }
@@ -56,6 +62,11 @@ public class RedisQueueStore implements QueueStore {
     @Override
     public Optional<String> getValue(String key) {
         return Optional.ofNullable(redisTemplate.opsForValue().get(key));
+    }
+
+    @Override
+    public void deleteValue(String key) {
+        redisTemplate.delete(key);
     }
 
     @Override

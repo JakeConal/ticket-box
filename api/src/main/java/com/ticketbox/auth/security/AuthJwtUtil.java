@@ -8,6 +8,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
@@ -25,14 +26,16 @@ public class AuthJwtUtil {
 
     private final AuthProperties properties;
     private final SecretKey authKey;
+    private final Clock clock;
 
-    public AuthJwtUtil(AuthProperties properties) {
+    public AuthJwtUtil(AuthProperties properties, Clock clock) {
         this.properties = properties;
         this.authKey = keyFromSecret(properties.jwtSecret());
+        this.clock = clock;
     }
 
     public TokenPair issueTokenPair(User user) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         Instant accessExpiresAt = now.plus(properties.accessTokenTtl());
         Instant refreshExpiresAt = now.plus(properties.refreshTokenTtl());
         return new TokenPair(
@@ -74,7 +77,7 @@ public class AuthJwtUtil {
     }
 
     private String issue(User user, String type, Instant expiresAt, Map<String, Object> extraClaims) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         JwtBuilder builder = Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(user.getId().toString())
@@ -90,6 +93,7 @@ public class AuthJwtUtil {
 
     private Claims parse(String token) {
         return Jwts.parser()
+                .clock(() -> Date.from(clock.instant()))
                 .verifyWith(authKey)
                 .build()
                 .parseSignedClaims(token)

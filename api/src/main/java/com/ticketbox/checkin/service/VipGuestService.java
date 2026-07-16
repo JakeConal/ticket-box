@@ -48,7 +48,6 @@ public class VipGuestService {
                 where concert_id = ?
                   and active = true
                 order by entered asc, name asc
-                limit 200
                 """, this::mapGuestRow, concertId)
                 .stream()
                 .filter(guest -> fold(guest.name()).contains(foldedQuery)
@@ -72,7 +71,6 @@ public class VipGuestService {
                 where concert_id = ?
                   and active = true
                 order by name asc
-                limit 500
                 """, this::mapGuestRow, concertId)
                 .stream()
                 .map(this::toResponse)

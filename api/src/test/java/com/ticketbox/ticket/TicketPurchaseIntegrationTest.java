@@ -130,7 +130,7 @@ class TicketPurchaseIntegrationTest {
     void purchaseCreatesPendingOrderAndReturnsStoredResultForDuplicateIdempotencyKey() throws Exception {
         String token = tokenFor(saveUser("buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PURCHASE-IDEMPOTENT");
-        UUID ticketTypeId = createTicketType(concertId, 5, 5, 2, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 5, 5, 2, Instant.now().minus(Duration.ofHours(1)));
 
         TestResponse first = postPurchase(token, null, ticketTypeId, 1);
         assertThat(first.status()).isEqualTo(HttpStatus.OK.value());
@@ -164,9 +164,34 @@ class TicketPurchaseIntegrationTest {
     }
 
     @Test
+    void paymentSetupFailureReleasesInventoryAndAllowsIdempotentRetry() throws Exception {
+        String token = tokenFor(saveUser("gateway-retry@ticketbox.vn", UserRole.AUDIENCE));
+        UUID concertId = createPublishedConcert("PURCHASE-GATEWAY-RETRY");
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 2, Instant.now().minus(Duration.ofHours(1)));
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        TestResponse failed = postPurchase(token, idempotencyKey, ticketTypeId, 1, "MOMO");
+
+        assertThat(failed.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+        assertThat(remainingQuantity(ticketTypeId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from orders where status = 'FAILED' and idempotency_key is null",
+                Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from idempotency_keys where \"key\" = ?",
+                Integer.class,
+                idempotencyKey)).isZero();
+
+        TestResponse retry = postPurchase(token, idempotencyKey, ticketTypeId, 1, "VNPAY");
+
+        assertThat(retry.status()).isEqualTo(HttpStatus.OK.value());
+        assertThat(remainingQuantity(ticketTypeId)).isEqualTo(1);
+    }
+
+    @Test
     void simultaneousPurchaseOfLastSvipTicketAllowsExactlyOneBuyer() throws Exception {
         UUID concertId = createPublishedConcert("PURCHASE-LAST-SVIP");
-        UUID ticketTypeId = createTicketType(concertId, 1, 1, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 1, 1, 1, Instant.now().minus(Duration.ofHours(1)));
         List<String> tokens = new ArrayList<>();
         for (int i = 0; i < 200; i++) {
             tokens.add(tokenFor(saveUser("last-svip-" + i + "@ticketbox.vn", UserRole.AUDIENCE)));
@@ -186,7 +211,7 @@ class TicketPurchaseIntegrationTest {
     void concurrentSameUserPurchasesCannotExceedPerUserLimit() throws Exception {
         String token = tokenFor(saveUser("limit-buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PURCHASE-USER-LIMIT");
-        UUID ticketTypeId = createTicketType(concertId, 10, 10, 2, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 10, 10, 2, Instant.now().minus(Duration.ofHours(1)));
 
         List<Integer> statuses = runConcurrent(5, 5, ignored ->
                 postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1).status());
@@ -201,12 +226,12 @@ class TicketPurchaseIntegrationTest {
     void stalePendingOrderExpiresAndReleasesInventoryAndQuota() throws Exception {
         String token = tokenFor(saveUser("expiry-buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PURCHASE-EXPIRY");
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofHours(1)));
         TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
         jdbcTemplate.update(
                 "update orders set created_at = ? where id = ?",
-                Instant.now().minus(Duration.ofMinutes(9)),
+                Instant.now().minus(Duration.ofHours(1)),
                 orderId);
 
         int expired = orderExpiryService.expireStaleOrders();
@@ -223,13 +248,15 @@ class TicketPurchaseIntegrationTest {
     void vnpayCallbackMarksPendingOrderPaidAndOrderOwnerCanPollStatus() throws Exception {
         String token = tokenFor(saveUser("callback-buyer@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PAYMENT-CALLBACK");
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 2, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 2, Instant.now().minus(Duration.ofHours(1)));
         TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 2);
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
 
         assertThat(getJson("/api/orders/" + orderId, token).json().get("status").asText()).isEqualTo("PENDING");
-        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
-                .isEqualTo(HttpStatus.OK.value());
+        TestResponse callback = getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null);
+        assertThat(callback.status()).isEqualTo(HttpStatus.SEE_OTHER.value());
+        assertThat(callback.headers().firstValue("Location"))
+                .contains("/orders/" + orderId + "?payment=success");
 
         JsonNode order = getJson("/api/orders/" + orderId, token).json();
         assertThat(order.get("status").asText()).isEqualTo("PAID");
@@ -282,13 +309,15 @@ class TicketPurchaseIntegrationTest {
     void pendingConfirmationReconcilesOnDelayedCallback() throws Exception {
         String token = tokenFor(saveUser("pending-confirmation@ticketbox.vn", UserRole.AUDIENCE));
         UUID concertId = createPublishedConcert("PAYMENT-PENDING-CONFIRMATION");
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofHours(1)));
         TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
         paymentOrderService.markPendingConfirmation(orderId);
 
-        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
-                .isEqualTo(HttpStatus.OK.value());
+        TestResponse callback = getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null);
+        assertThat(callback.status()).isEqualTo(HttpStatus.SEE_OTHER.value());
+        assertThat(callback.headers().firstValue("Location"))
+                .contains("/orders/" + orderId + "?payment=success");
 
         assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
                 .isEqualTo("PAID");
@@ -299,13 +328,15 @@ class TicketPurchaseIntegrationTest {
         String token = tokenFor(saveUser("late-success@ticketbox.vn", UserRole.AUDIENCE));
         String eventCode = "PAYMENT-LATE-SUCCESS";
         UUID concertId = createPublishedConcert(eventCode);
-        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofMinutes(1)));
+        UUID ticketTypeId = createTicketType(concertId, 2, 2, 1, Instant.now().minus(Duration.ofHours(1)));
         TestResponse purchase = postPurchase(token, UUID.randomUUID().toString(), ticketTypeId, 1);
         UUID orderId = UUID.fromString(purchase.json().get("orderId").asText());
         assertThat(orderReleaseService.markExpiredAndRelease(orderId)).isTrue();
 
-        assertThat(getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null).status())
-                .isEqualTo(HttpStatus.OK.value());
+        TestResponse callback = getJson("/api/payments/vnpay/callback?" + successfulVnpayQuery(purchase), null);
+        assertThat(callback.status()).isEqualTo(HttpStatus.SEE_OTHER.value());
+        assertThat(callback.headers().firstValue("Location"))
+                .contains("/orders/" + orderId + "?payment=success");
         assertThat(jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId))
                 .isEqualTo("REFUND_REQUIRED");
 
@@ -348,6 +379,16 @@ class TicketPurchaseIntegrationTest {
 
     private TestResponse postPurchase(String bearerToken, String idempotencyKey, UUID ticketTypeId, int quantity)
             throws Exception {
+        return postPurchase(bearerToken, idempotencyKey, ticketTypeId, quantity, "VNPAY");
+    }
+
+    private TestResponse postPurchase(
+            String bearerToken,
+            String idempotencyKey,
+            UUID ticketTypeId,
+            int quantity,
+            String paymentProvider)
+            throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url("/api/tickets/purchase")))
                 .timeout(Duration.ofSeconds(10))
                 .header("Authorization", "Bearer " + bearerToken)
@@ -355,7 +396,7 @@ class TicketPurchaseIntegrationTest {
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of(
                         "ticketTypeId", ticketTypeId.toString(),
                         "quantity", quantity,
-                        "paymentProvider", "VNPAY"))));
+                        "paymentProvider", paymentProvider))));
         if (idempotencyKey != null) {
             builder.header("Idempotency-Key", idempotencyKey);
         }

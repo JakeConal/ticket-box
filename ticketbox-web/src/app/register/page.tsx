@@ -56,5 +56,6 @@ export default function RegisterPage() {
 }
 
 function nextPath() {
-  return new URLSearchParams(window.location.search).get("next") || "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next?.startsWith("/") && !next.startsWith("//") ? next : "/";
 }

@@ -38,6 +38,22 @@ public class OrderReleaseService {
     }
 
     @Transactional
+    public boolean markPaymentSetupFailedAndRelease(UUID orderId, String idempotencyKey) {
+        boolean released = release(orderId, FAILED);
+        if (released) {
+            jdbcTemplate.update(
+                    "update orders set idempotency_key = null where id = ? and idempotency_key = ?",
+                    orderId,
+                    idempotencyKey);
+            jdbcTemplate.update(
+                    "delete from idempotency_keys where \"key\" = ? and (order_id is null or order_id = ?)",
+                    idempotencyKey,
+                    orderId);
+        }
+        return released;
+    }
+
+    @Transactional
     public boolean markExpiredAndRelease(UUID orderId) {
         return release(orderId, EXPIRED);
     }

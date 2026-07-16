@@ -12,7 +12,7 @@ import com.ticketbox.auth.repository.UserRepository;
 import com.ticketbox.auth.security.AuthJwtUtil;
 import com.ticketbox.auth.security.UserPrincipal;
 import io.jsonwebtoken.Claims;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -32,18 +32,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final AuthJwtUtil authJwtUtil;
+    private final Clock clock;
 
     public AuthService(
             UserRepository userRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            AuthJwtUtil authJwtUtil) {
+            AuthJwtUtil authJwtUtil,
+            Clock clock) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.authJwtUtil = authJwtUtil;
+        this.clock = clock;
     }
 
     @Transactional
@@ -58,7 +61,7 @@ public class AuthService {
                 email,
                 passwordEncoder.encode(request.password()),
                 UserRole.AUDIENCE,
-                Instant.now());
+                clock.instant());
         userRepository.save(user);
         return issueAndStoreTokens(user);
     }
@@ -91,7 +94,7 @@ public class AuthService {
             refreshTokenRepository.revokeAllForUser(userId);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token reuse detected");
         }
-        if (token.getExpiresAt().isBefore(Instant.now())) {
+        if (token.getExpiresAt().isBefore(clock.instant())) {
             token.revoke();
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token expired");
         }
@@ -111,7 +114,7 @@ public class AuthService {
                 user,
                 authJwtUtil.hashToken(tokenPair.refreshToken()),
                 tokenPair.refreshTokenExpiresAt(),
-                Instant.now()));
+                clock.instant()));
         return new AuthResponse(
                 user.getId(),
                 user.getEmail(),

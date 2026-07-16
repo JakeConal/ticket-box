@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getSession } from "../lib/audience-api";
+import { AUDIENCE_AUTH_CHANGED_EVENT, getSession } from "../lib/audience-api";
 
 type NotificationToast = {
   id: number;
@@ -19,14 +19,36 @@ export function NotificationListener() {
   useEffect(() => {
     let source: EventSource | null = null;
     let cancelled = false;
+    let retryTimer: number | undefined;
+
+    function scheduleRetry() {
+      if (cancelled || retryTimer) {
+        return;
+      }
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void connect();
+      }, 5000);
+    }
 
     async function connect() {
-      const session = await getSession();
+      if (cancelled || (source && source.readyState !== EventSource.CLOSED)) {
+        return;
+      }
+
+      let session;
+      try {
+        session = await getSession();
+      } catch {
+        scheduleRetry();
+        return;
+      }
       if (cancelled || !session) {
         return;
       }
 
-      source = new EventSource("/audience-api/notifications/stream");
+      const nextSource = new EventSource("/audience-api/notifications/stream");
+      source = nextSource;
       const showNotification = (event: MessageEvent<string>) => {
         try {
           const parsed = JSON.parse(event.data) as Partial<NotificationToast>;
@@ -47,17 +69,41 @@ export function NotificationListener() {
       };
 
       for (const eventType of EVENT_TYPES) {
-        source.addEventListener(eventType, showNotification);
+        nextSource.addEventListener(eventType, showNotification);
       }
-      source.onerror = () => {
-        source?.close();
+      nextSource.onerror = () => {
+        void getSession()
+          .then((currentSession) => {
+            if (!currentSession && source === nextSource) {
+              nextSource.close();
+              source = null;
+            }
+          })
+          .catch(() => undefined);
       };
     }
 
+    function reconnectForAuthChange() {
+      source?.close();
+      source = null;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+      void connect();
+    }
+
     void connect();
+    window.addEventListener("online", reconnectForAuthChange);
+    window.addEventListener(AUDIENCE_AUTH_CHANGED_EVENT, reconnectForAuthChange);
     return () => {
       cancelled = true;
       source?.close();
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
+      window.removeEventListener("online", reconnectForAuthChange);
+      window.removeEventListener(AUDIENCE_AUTH_CHANGED_EVENT, reconnectForAuthChange);
     };
   }, []);
 
@@ -89,7 +135,7 @@ export function NotificationListener() {
           type="button"
           onClick={() => setToast(null)}
         >
-          ×
+          {"\u00d7"}
         </button>
       </div>
     </aside>

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "./http-error";
+
 export type AuthSession = {
   userId: string;
   email: string;
@@ -153,6 +155,7 @@ export type CheckerAssignment = {
 
 
 const SESSION_KEY = "ticketbox.admin.session";
+let refreshPromise: Promise<AuthSession> | null = null;
 
 export function readSession(): AuthSession | null {
   if (typeof window === "undefined") {
@@ -182,7 +185,7 @@ export async function loginOrganizer(email: string, password: string) {
   const session = await request<AuthSession>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
-  });
+  }, false);
   if (session.role !== "ORGANIZER") {
     throw new Error("This dashboard is restricted to organizer accounts.");
   }
@@ -225,18 +228,17 @@ export async function uploadArtistPdf(concertId: string, file: File) {
   );
 }
 
-export async function triggerVipImport(): Promise<VipImportSummary[]> {
-  return adminJson<VipImportSummary[]>("/api/admin/vip-imports", "POST");
-}
-
-export async function uploadVipCsv(file: File): Promise<VipImportSummary[]> {
+export async function uploadVipCsv(file: File, concertId: string): Promise<VipImportSummary[]> {
   const form = new FormData();
   form.append("file", file);
-  return request<VipImportSummary[]>("/api/admin/vip-imports/upload", {
-    method: "POST",
-    headers: authHeaders(),
-    body: form
-  });
+  return request<VipImportSummary[]>(
+    `/api/admin/vip-imports/upload?concertId=${encodeURIComponent(concertId)}`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: form
+    }
+  );
 }
 
 export async function getVipGuests(concertId: string): Promise<VipGuestResponse[]> {
@@ -332,24 +334,67 @@ function authHeaders(extra?: Record<string, string>) {
   };
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
   const headers = new Headers(init.headers);
+  const protectedRequest = headers.has("Authorization");
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path, {
+  let response = await fetch(path, {
     ...init,
     headers
   });
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401 && allowRefresh && protectedRequest) {
+    const refreshed = await refreshOrganizerSession();
+    headers.set("Authorization", `Bearer ${refreshed.accessToken}`);
+    response = await fetch(path, {
+      ...init,
+      headers
+    });
+  }
+  if (response.status === 401) {
     clearSession();
   }
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    if (response.status === 401 && protectedRequest) {
+      throw new Error("Organizer session required");
+    }
+    throw new Error(apiErrorMessage(message, response.status));
   }
   if (response.status === 204) {
     return undefined as T;
   }
   return response.json() as Promise<T>;
+}
+
+async function refreshOrganizerSession() {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  const current = readSession();
+  if (!current?.refreshToken) {
+    throw new Error("Organizer session required");
+  }
+  refreshPromise = request<AuthSession>("/api/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken: current.refreshToken })
+  }, false)
+    .then((session) => {
+      if (session.role !== "ORGANIZER") {
+        throw new Error("Organizer session required");
+      }
+      saveSession(session);
+      return session;
+    })
+    .catch((caught) => {
+      if (!readSession()) {
+        throw new Error("Organizer session required");
+      }
+      throw caught;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
 }

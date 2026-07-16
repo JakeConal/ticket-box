@@ -98,9 +98,30 @@ public class VipGuestImportService {
 
         List<VipGuestImportSummaryResponse> summaries = new ArrayList<>();
         for (Path file : files) {
-            summaries.add(processFile(file, organizerId));
+            ImportSource source = organizerId.isPresent()
+                    ? ImportSource.ORGANIZER_DIRECTORY
+                    : ImportSource.SYSTEM_DIRECTORY;
+            summaries.add(processFile(
+                    file,
+                    file.getFileName().toString(),
+                    organizerId,
+                    Optional.empty(),
+                    source));
         }
         return summaries;
+    }
+
+    public VipGuestImportSummaryResponse processUploadedImport(
+            Path file,
+            String originalFileName,
+            UUID organizerId,
+            UUID expectedConcertId) {
+        return processFile(
+                file,
+                originalFileName,
+                Optional.of(organizerId),
+                Optional.of(expectedConcertId),
+                ImportSource.ORGANIZER_UPLOAD);
     }
 
     private List<Path> listCsvFiles(Path importDir) {
@@ -115,8 +136,12 @@ public class VipGuestImportService {
         }
     }
 
-    private VipGuestImportSummaryResponse processFile(Path file, Optional<UUID> organizerId) {
-        String fileName = file.getFileName().toString();
+    private VipGuestImportSummaryResponse processFile(
+            Path file,
+            String fileName,
+            Optional<UUID> organizerId,
+            Optional<UUID> expectedConcertId,
+            ImportSource source) {
         String hash;
         try {
             hash = sha256(file);
@@ -144,22 +169,41 @@ public class VipGuestImportService {
         }
 
         SummaryBuilder summary = SummaryBuilder.forFile(fileName).totalRows(parsed.rows().size());
-        ImportMutationResult mutation = transactionTemplate.execute(status ->
-                applyRows(fileName, parsed.rows(), organizerId, summary));
-        if (mutation == null) {
+        Optional<String> scopeIssue = validateImportScope(
+                parsed.rows(),
+                organizerId,
+                expectedConcertId,
+                source);
+        if (scopeIssue.isPresent()) {
+            summary.errored().message(scopeIssue.get());
+            if (source == ImportSource.ORGANIZER_UPLOAD) {
+                return archiveError(file, summary);
+            }
+            return summary.build();
+        }
+
+        ProcessedImport processedImport = transactionTemplate.execute(status -> {
+            ImportMutationResult mutation = applyRows(fileName, parsed.rows(), organizerId, summary);
+            if (mutation.quarantine()) {
+                return new ProcessedImport(mutation, null);
+            }
+            VipGuestImportSummaryResponse response = summary
+                    .message(mutation.message())
+                    .processed()
+                    .build();
+            recordImportFile(fileName, hash, response);
+            return new ProcessedImport(mutation, response);
+        });
+        if (processedImport == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "VIP import failed");
         }
 
-        if (mutation.quarantine()) {
-            log.error("VIP import {} quarantined: {}", fileName, mutation.message());
-            return archiveError(file, summary.message(mutation.message()));
+        if (processedImport.mutation().quarantine()) {
+            log.error("VIP import {} quarantined: {}", fileName, processedImport.mutation().message());
+            return archiveError(file, summary.message(processedImport.mutation().message()));
         }
 
-        VipGuestImportSummaryResponse response = summary
-                .message(mutation.message())
-                .processed()
-                .build();
-        recordImportFile(fileName, hash, response);
+        VipGuestImportSummaryResponse response = processedImport.response();
         moveTo(file, processedDir());
         log.info(
                 "VIP import {} summary: total={}, inserted={}, updated={}, deactivated={}, skipped={}, errored={}",
@@ -173,6 +217,68 @@ public class VipGuestImportService {
         return response;
     }
 
+    private Optional<String> validateImportScope(
+            List<CsvRow> rows,
+            Optional<UUID> organizerId,
+            Optional<UUID> expectedConcertId,
+            ImportSource source) {
+        if (organizerId.isEmpty()) {
+            return Optional.empty();
+        }
+
+        boolean ownedConcertFound = false;
+        boolean expectedConcertFound = false;
+        for (CsvRow row : rows) {
+            if (!StringUtils.hasText(row.eventCode())) {
+                if (source == ImportSource.ORGANIZER_UPLOAD) {
+                    return Optional.of(
+                            "Row %d is missing event_code; no guests were imported"
+                                    .formatted(row.rowNumber()));
+                }
+                continue;
+            }
+            Optional<ConcertRef> concert = resolveConcert(row.eventCode());
+            if (concert.isEmpty()) {
+                if (source == ImportSource.ORGANIZER_UPLOAD) {
+                    return Optional.of(
+                            "Row %d has unknown event_code '%s'; no guests were imported"
+                                    .formatted(row.rowNumber(), row.eventCode()));
+                }
+                continue;
+            }
+
+            ConcertRef concertRef = concert.get();
+            if (!organizerId.get().equals(concertRef.createdBy())) {
+                return Optional.of(
+                        source == ImportSource.ORGANIZER_UPLOAD
+                                ? "Row %d belongs to a concert outside your organizer account; no guests were imported"
+                                        .formatted(row.rowNumber())
+                                : "File was left pending because it contains a concert owned by another organizer");
+            }
+
+            ownedConcertFound = true;
+            if (expectedConcertId.isPresent()) {
+                if (!expectedConcertId.get().equals(concertRef.id())) {
+                    return Optional.of(
+                            "Row %d uses event_code '%s', which does not match the selected concert"
+                                    .formatted(row.rowNumber(), row.eventCode()));
+                }
+                expectedConcertFound = true;
+            }
+        }
+
+        if (!ownedConcertFound) {
+            return Optional.of(
+                    source == ImportSource.ORGANIZER_UPLOAD
+                            ? "CSV does not contain a valid event_code for the selected concert"
+                            : "File was left pending because it contains no concerts owned by this organizer");
+        }
+        if (expectedConcertId.isPresent() && !expectedConcertFound) {
+            return Optional.of("CSV does not contain the selected concert's event_code");
+        }
+        return Optional.empty();
+    }
+
     private ImportMutationResult applyRows(
             String fileName,
             List<CsvRow> rows,
@@ -180,19 +286,17 @@ public class VipGuestImportService {
             SummaryBuilder summary) {
         Map<UUID, Set<String>> phonesByConcert = new LinkedHashMap<>();
         Set<GuestKey> seenInFile = new HashSet<>();
+        Set<UUID> unsafeReconciliation = new HashSet<>();
+        boolean unsafeAllReconciliation = false;
         int knownConcertRows = 0;
         int acceptedRows = 0;
 
         for (CsvRow row : rows) {
+            ConcertRef concertRef = null;
             try {
-                Optional<String> normalizedPhone = phoneNormalizer.normalize(row.phone());
-                if (normalizedPhone.isEmpty()) {
-                    log.warn("VIP import {} row {} skipped: missing or invalid phone", fileName, row.rowNumber());
-                    summary.skipped();
-                    continue;
-                }
                 if (!StringUtils.hasText(row.eventCode())) {
                     log.warn("VIP import {} row {} skipped: missing event_code", fileName, row.rowNumber());
+                    unsafeAllReconciliation = true;
                     summary.skipped();
                     continue;
                 }
@@ -200,18 +304,27 @@ public class VipGuestImportService {
                 Optional<ConcertRef> concert = resolveConcert(row.eventCode());
                 if (concert.isEmpty()) {
                     log.warn("VIP import {} row {} skipped: unknown event_code {}", fileName, row.rowNumber(), row.eventCode());
+                    unsafeAllReconciliation = true;
                     summary.skipped();
                     continue;
                 }
                 knownConcertRows++;
 
-                ConcertRef concertRef = concert.get();
+                concertRef = concert.get();
                 if (organizerId.isPresent() && !organizerId.get().equals(concertRef.createdBy())) {
                     log.warn(
                             "VIP import {} row {} skipped: event_code {} belongs to another organizer",
                             fileName,
                             row.rowNumber(),
                             row.eventCode());
+                    summary.skipped();
+                    continue;
+                }
+
+                Optional<String> normalizedPhone = phoneNormalizer.normalize(row.phone());
+                if (normalizedPhone.isEmpty()) {
+                    log.warn("VIP import {} row {} skipped: missing or invalid phone", fileName, row.rowNumber());
+                    unsafeReconciliation.add(concertRef.id());
                     summary.skipped();
                     continue;
                 }
@@ -233,6 +346,9 @@ public class VipGuestImportService {
                 acceptedRows++;
             } catch (RuntimeException ex) {
                 log.warn("VIP import {} row {} failed: {}", fileName, row.rowNumber(), ex.getMessage());
+                if (concertRef != null) {
+                    unsafeReconciliation.add(concertRef.id());
+                }
                 summary.errored();
             }
         }
@@ -241,12 +357,23 @@ public class VipGuestImportService {
             return new ImportMutationResult(true, "All event_code values were unresolvable; file quarantined");
         }
 
+        int skippedReconciliations = 0;
         for (Map.Entry<UUID, Set<String>> entry : phonesByConcert.entrySet()) {
+            if (unsafeAllReconciliation || unsafeReconciliation.contains(entry.getKey())) {
+                skippedReconciliations++;
+                continue;
+            }
             summary.deactivated(reconcileConcert(entry.getKey(), entry.getValue()));
         }
 
         if (acceptedRows == 0) {
             return new ImportMutationResult(false, "No owned valid VIP rows were imported");
+        }
+        if (skippedReconciliations > 0) {
+            return new ImportMutationResult(
+                    false,
+                    "VIP rows were imported, but snapshot deactivation was skipped for %d concert(s) because the file contains invalid or unscoped rows"
+                            .formatted(skippedReconciliations));
         }
         return new ImportMutationResult(false, "VIP import completed");
     }
@@ -415,11 +542,24 @@ public class VipGuestImportService {
 
     private void recordImportFile(String fileName, String hash, VipGuestImportSummaryResponse summary) {
         String summaryJson = toJson(summary);
-        String sql = postgres
-                ? "insert into import_files (file_name, content_hash, processed_at, summary) values (?, ?, ?, ?::jsonb)"
-                : "insert into import_files (file_name, content_hash, processed_at, summary) values (?, ?, ?, ?)";
+        if (postgres) {
+            int inserted = jdbcTemplate.update("""
+                    insert into import_files (file_name, content_hash, processed_at, summary)
+                    values (?, ?, ?, ?::jsonb)
+                    on conflict (content_hash) do nothing
+                    """, fileName, hash, Timestamp.from(clock.instant()), summaryJson);
+            if (inserted == 0) {
+                log.info("VIP import {} content hash was recorded concurrently", fileName);
+            }
+            return;
+        }
         try {
-            jdbcTemplate.update(sql, fileName, hash, Timestamp.from(clock.instant()), summaryJson);
+            jdbcTemplate.update(
+                    "insert into import_files (file_name, content_hash, processed_at, summary) values (?, ?, ?, ?)",
+                    fileName,
+                    hash,
+                    Timestamp.from(clock.instant()),
+                    summaryJson);
         } catch (DataAccessException ex) {
             if (hashSeen(hash)) {
                 log.info("VIP import {} content hash was recorded concurrently", fileName);
@@ -522,6 +662,17 @@ public class VipGuestImportService {
     }
 
     private record ImportMutationResult(boolean quarantine, String message) {
+    }
+
+    private record ProcessedImport(
+            ImportMutationResult mutation,
+            VipGuestImportSummaryResponse response) {
+    }
+
+    private enum ImportSource {
+        SYSTEM_DIRECTORY,
+        ORGANIZER_DIRECTORY,
+        ORGANIZER_UPLOAD
     }
 
     private static class SummaryBuilder {

@@ -16,11 +16,19 @@ import {
   getConcert,
   getQueueStatus,
   getSession,
+  leaveQueue,
   purchaseTickets
 } from "../../../lib/audience-api";
 import { ui } from "../../../components/ui";
 
 const PAYMENT_PROVIDER = "VNPAY" as const;
+const PURCHASE_ATTEMPT_TTL_MS = 15 * 60 * 1000;
+
+type PurchaseAttempt = {
+  fingerprint: string;
+  key: string;
+  createdAt: number;
+};
 
 export default function ConcertDetailPage() {
   const params = useParams<{ id: string }>();
@@ -35,10 +43,15 @@ export default function ConcertDetailPage() {
   const [queueStatus, setQueueStatus] = useState<Awaited<ReturnType<typeof getQueueStatus>> | null>(null);
   const [pendingPurchase, setPendingPurchase] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const paymentWindowRef = useRef<Window | null>(null);
+  const [leavingQueue, setLeavingQueue] = useState(false);
+  const purchaseAttemptRef = useRef<PurchaseAttempt | null>(null);
+  const purchaseInFlightRef = useRef(false);
+  const queueCancelledRef = useRef(false);
 
   useEffect(() => {
-    void getSession().then((nextSession) => setSession(nextSession));
+    void getSession()
+      .then((nextSession) => setSession(nextSession))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -50,7 +63,19 @@ export default function ConcertDetailPage() {
         }
         setConcert(nextConcert);
         setAvailability(nextAvailability || []);
-        setSelectedTicketId((current) => current || nextConcert.ticketTypes[0]?.id || "");
+        setSelectedTicketId((current) => {
+          if (current) {
+            return current;
+          }
+          const availabilityById = new Map(
+            (nextAvailability || []).map((item) => [item.ticketTypeId, item])
+          );
+          return nextConcert.ticketTypes.find((ticket) => {
+            const live = availabilityById.get(ticket.id);
+            return (live?.remainingQuantity ?? ticket.remainingQuantity) > 0
+              && new Date(ticket.saleOpensAt).getTime() <= Date.now();
+          })?.id || nextConcert.ticketTypes[0]?.id || "";
+        });
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load concert"));
     return () => {
@@ -93,12 +118,15 @@ export default function ConcertDetailPage() {
             return;
           }
           setQueueStatus(nextStatus);
-          if (nextStatus.admitted && nextStatus.admissionToken) {
+          if (!queueCancelledRef.current && nextStatus.admitted && nextStatus.admissionToken) {
             setPendingPurchase(false);
             void completePurchase(nextStatus.admissionToken);
           }
         })
         .catch((caught) => {
+          if (queueCancelledRef.current) {
+            return;
+          }
           setPendingPurchase(false);
           setSubmitting(false);
           setError(caught instanceof Error ? caught.message : "Waiting room is unavailable");
@@ -108,9 +136,10 @@ export default function ConcertDetailPage() {
   }, [concertId, pendingPurchase, queueStatus?.active, queueStatus?.admitted, selectedTicketId, quantity]);
 
   async function completePurchase(admissionToken?: string) {
-    if (!selectedTicket) {
+    if (!selectedTicket || purchaseInFlightRef.current || queueCancelledRef.current) {
       return;
     }
+    purchaseInFlightRef.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -119,29 +148,21 @@ export default function ConcertDetailPage() {
         quantity,
         paymentProvider: PAYMENT_PROVIDER,
         admissionToken
-      });
+      }, purchaseAttemptKey(selectedTicket.id, quantity));
       if (!result) {
-        paymentWindowRef.current?.close();
-        paymentWindowRef.current = null;
+        purchaseInFlightRef.current = false;
         setSubmitting(false);
         return;
       }
       addOrderToHistory(result.orderId);
-      const paymentWindow = paymentWindowRef.current;
-      if (!paymentWindow || paymentWindow.closed) {
-        setError("The payment tab was closed. Please try again.");
-        setSubmitting(false);
-        return;
-      }
-      paymentWindow.location.replace(result.paymentUrl);
-      paymentWindowRef.current = null;
-      setSubmitting(false);
+      clearPurchaseAttempt();
+      window.location.assign(result.paymentUrl);
     } catch (caught) {
-      paymentWindowRef.current?.close();
-      paymentWindowRef.current = null;
       setError(caught instanceof Error ? caught.message : "Purchase failed");
       setPendingPurchase(false);
+      setQueueStatus(null);
       setSubmitting(false);
+      purchaseInFlightRef.current = false;
     }
   }
 
@@ -150,21 +171,26 @@ export default function ConcertDetailPage() {
     if (!selectedTicket) {
       return;
     }
+    if (submitting || pendingPurchase) {
+      return;
+    }
     if (!session) {
-      router.push(`/login?next=${encodeURIComponent(`/concerts/${concertId}`)}`);
-      return;
+      setSubmitting(true);
+      try {
+        const currentSession = await getSession();
+        if (!currentSession) {
+          setSubmitting(false);
+          router.push(`/login?next=${encodeURIComponent(`/concerts/${concertId}`)}`);
+          return;
+        }
+        setSession(currentSession);
+      } catch {
+        setError("Could not verify your session. Check your connection and try again.");
+        setSubmitting(false);
+        return;
+      }
     }
-    const paymentWindow = window.open("about:blank", "_blank");
-    if (!paymentWindow) {
-      setError("Your browser blocked the payment tab. Allow pop-ups for this site and try again.");
-      return;
-    }
-    paymentWindow.opener = null;
-    paymentWindow.document.title = "TicketBox payment";
-    const paymentMessage = paymentWindow.document.createElement("p");
-    paymentMessage.textContent = "Preparing secure payment...";
-    paymentWindow.document.body.append(paymentMessage);
-    paymentWindowRef.current = paymentWindow;
+    queueCancelledRef.current = false;
     setSubmitting(true);
     setError("");
     setQueueStatus(null);
@@ -179,10 +205,79 @@ export default function ConcertDetailPage() {
       }
       await completePurchase(nextQueueStatus?.admissionToken || undefined);
     } catch (caught) {
-      paymentWindowRef.current?.close();
-      paymentWindowRef.current = null;
       setError(caught instanceof Error ? caught.message : "Purchase failed");
       setSubmitting(false);
+    }
+  }
+
+  function purchaseAttemptKey(ticketTypeId: string, nextQuantity: number) {
+    const fingerprint = `${ticketTypeId}:${nextQuantity}:${PAYMENT_PROVIDER}`;
+    if (purchaseAttemptRef.current?.fingerprint !== fingerprint) {
+      const stored = readStoredPurchaseAttempt();
+      purchaseAttemptRef.current = stored?.fingerprint === fingerprint
+        && Date.now() - stored.createdAt < PURCHASE_ATTEMPT_TTL_MS
+        ? stored
+        : {
+            fingerprint,
+            key: crypto.randomUUID(),
+            createdAt: Date.now()
+          };
+      storePurchaseAttempt(purchaseAttemptRef.current);
+    }
+    return purchaseAttemptRef.current.key;
+  }
+
+  function readStoredPurchaseAttempt(): PurchaseAttempt | null {
+    try {
+      const raw = window.sessionStorage.getItem(purchaseAttemptStorageKey());
+      const parsed = raw ? JSON.parse(raw) as Partial<PurchaseAttempt> : null;
+      return parsed
+        && typeof parsed.fingerprint === "string"
+        && typeof parsed.key === "string"
+        && typeof parsed.createdAt === "number"
+        ? parsed as PurchaseAttempt
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function storePurchaseAttempt(attempt: PurchaseAttempt) {
+    try {
+      window.sessionStorage.setItem(purchaseAttemptStorageKey(), JSON.stringify(attempt));
+    } catch {
+      return;
+    }
+  }
+
+  function clearPurchaseAttempt() {
+    purchaseAttemptRef.current = null;
+    try {
+      window.sessionStorage.removeItem(purchaseAttemptStorageKey());
+    } catch {
+      return;
+    }
+  }
+
+  function purchaseAttemptStorageKey() {
+    return `ticketbox:purchase-attempt:${concertId}`;
+  }
+
+  async function cancelWaitingRoom() {
+    queueCancelledRef.current = true;
+    setLeavingQueue(true);
+    setError("");
+    try {
+      await leaveQueue(concertId);
+      setPendingPurchase(false);
+      setSubmitting(false);
+      setQueueStatus(null);
+      clearPurchaseAttempt();
+    } catch (caught) {
+      queueCancelledRef.current = false;
+      setError(caught instanceof Error ? caught.message : "Could not leave the waiting room");
+    } finally {
+      setLeavingQueue(false);
     }
   }
 
@@ -233,7 +328,7 @@ export default function ConcertDetailPage() {
               return (
                 <button
                   className={ticket.id === selectedTicketId ? "flex min-h-20 flex-col justify-center border border-neutral-950 bg-neutral-950 px-4 py-3 text-left text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-20 flex-col justify-center border border-neutral-400 bg-white px-4 py-3 text-left text-neutral-950 transition-colors hover:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"}
-                  disabled={isSoldOut}
+                  disabled={isSoldOut || submitting || pendingPurchase}
                   key={ticket.id}
                   type="button"
                   onClick={() => setSelectedTicketId(ticket.id)}
@@ -261,17 +356,44 @@ export default function ConcertDetailPage() {
                 <strong className="mt-2 block text-2xl font-black">{formatMoney(selectedTicket.price)}</strong>
                 <small className="mt-2 block text-sm text-neutral-600">{remaining} left / limit {selectedTicket.perUserLimit}</small>
               </div>
-              <label>
-                Quantity
-                <input
-                  disabled={!canBuy}
-                  max={maxQuantity}
-                  min="1"
-                  type="number"
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
-                />
-              </label>
+              <div>
+                <span className="text-sm font-medium">Quantity</span>
+                <div className="mt-2 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] border border-neutral-500">
+                  <button
+                    aria-label="Decrease quantity"
+                    className="min-h-11 border-r border-neutral-500 text-lg font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!canBuy || submitting || pendingPurchase || quantity <= 1}
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                  >
+                    -
+                  </button>
+                  <input
+                    aria-label="Ticket quantity"
+                    className="!m-0 !min-h-11 !border-0 px-3 text-center text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-neutral-950"
+                    disabled={!canBuy || submitting || pendingPurchase}
+                    max={maxQuantity}
+                    min="1"
+                    type="number"
+                    value={quantity}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (Number.isFinite(next)) {
+                        setQuantity(Math.max(1, Math.min(maxQuantity, next)));
+                      }
+                    }}
+                  />
+                  <button
+                    aria-label="Increase quantity"
+                    className="min-h-11 border-l border-neutral-500 text-lg font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!canBuy || submitting || pendingPurchase || quantity >= maxQuantity}
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.min(maxQuantity, current + 1))}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
               <div>
                 <span className="text-sm font-medium">Payment provider</span>
                 <div className="mt-2 grid grid-cols-2 border border-neutral-500" aria-label="Payment provider">
@@ -294,20 +416,39 @@ export default function ConcertDetailPage() {
                 </div>
               </div>
               {queueStatus?.active ? (
-                <div className="grid grid-cols-2 gap-px bg-neutral-300" aria-live="polite">
-                  <div className="bg-white p-3">
-                    <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Queue position</span>
-                    <strong className="mt-2 block text-xl">{queueStatus.position ?? "Admitted"}</strong>
+                <div className="border border-neutral-950 p-4" aria-live="polite">
+                  <p className="text-sm font-semibold">
+                    {queueStatus.admitted ? "Your checkout slot is ready." : "You are in the waiting room."}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-px bg-neutral-300">
+                    <div className="bg-white p-3">
+                      <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Queue position</span>
+                      <strong className="mt-2 block text-xl">{queueStatus.position ?? "Admitted"}</strong>
+                    </div>
+                    <div className="bg-white p-3">
+                      <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Estimated wait</span>
+                      <strong className="mt-2 block text-xl">{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
+                    </div>
                   </div>
-                  <div className="bg-white p-3">
-                    <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Estimated wait</span>
-                    <strong className="mt-2 block text-xl">{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
-                  </div>
+                  {pendingPurchase ? (
+                    <button
+                      className={`${ui.ghostButton} mt-2 w-full`}
+                      disabled={leavingQueue}
+                      type="button"
+                      onClick={() => void cancelWaitingRoom()}
+                    >
+                      {leavingQueue ? "Leaving..." : "Leave waiting room"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               {!saleOpen ? <p className={ui.alertError}>Sale opens {formatDate(selectedTicket.saleOpensAt)}.</p> : null}
+              <div className="flex items-center justify-between border-y border-neutral-300 py-3 text-sm">
+                <span className="text-neutral-600">Order total</span>
+                <strong className="text-lg">{formatMoney(selectedTicket.price * quantity)}</strong>
+              </div>
               <button className={ui.primaryButton} disabled={!canBuy || submitting || pendingPurchase} type="submit">
-                {pendingPurchase ? "Waiting room" : submitting ? "Redirecting..." : "Continue to payment"}
+                {pendingPurchase ? "Waiting room" : submitting ? "Preparing payment..." : "Continue to payment"}
               </button>
             </form>
           ) : (

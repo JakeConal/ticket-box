@@ -40,6 +40,10 @@ spring:
           auth: ${SMTP_AUTH:false}
           starttls:
             enable: ${SMTP_STARTTLS_ENABLE:false}
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:21MB}
 
 server:
   port: ${SERVER_PORT:8080}

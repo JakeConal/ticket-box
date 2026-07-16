@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AdminOrder,
@@ -24,7 +24,6 @@ import {
   toTicketTypeRequest,
   uploadArtistPdf,
   VipImportSummary,
-  triggerVipImport,
   uploadVipCsv,
   VipGuestResponse,
   getVipGuests,
@@ -120,6 +119,7 @@ export default function AdminDashboardPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [vipSummaries, setVipSummaries] = useState<VipImportSummary[]>([]);
   const [importing, setImporting] = useState(false);
@@ -129,7 +129,12 @@ export default function AdminDashboardPage() {
   const [vipImportError, setVipImportError] = useState("");
   const [vipDirectoryMessage, setVipDirectoryMessage] = useState("");
   const [vipDirectoryError, setVipDirectoryError] = useState("");
+  const [vipDirectoryLoading, setVipDirectoryLoading] = useState(false);
+  const [pendingVipFile, setPendingVipFile] = useState<File | null>(null);
+  const [deletingVipId, setDeletingVipId] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const workspaceRequestRef = useRef(0);
+  const selectedIdRef = useRef("");
 
 
   useEffect(() => {
@@ -155,7 +160,9 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
+    selectedIdRef.current = selectedId;
     if (!selectedId) {
+      workspaceRequestRef.current += 1;
       return;
     }
     void loadWorkspace(selectedId);
@@ -181,6 +188,9 @@ export default function AdminDashboardPage() {
   const bioFailed = bio?.bioStatus === "FAILED";
   const bioStatusLabel = bioGenerating ? "PROCESSING" : bioStatus;
   const activeSectionMeta = ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0];
+  const vipImportNeedsAttention = vipSummaries.some(
+    (summary) => summary.skipped > 0 || summary.errored > 0 || summary.archive === "error"
+  );
 
   const filteredCheckers = useMemo(() => {
     const query = checkerSearch.trim().toLowerCase();
@@ -335,7 +345,9 @@ export default function AdminDashboardPage() {
     try {
       const owned = await adminGet<ConcertSummary[]>("/api/admin/concerts");
       setConcerts(owned);
-      setSelectedId((current) => current || owned[0]?.id || "");
+      setSelectedId((current) => owned.some((concert) => concert.id === current)
+        ? current
+        : owned[0]?.id || "");
       if (owned.length === 0) {
         setDetail(null);
         setForm(EMPTY_CONCERT);
@@ -348,6 +360,13 @@ export default function AdminDashboardPage() {
   }
 
   async function loadWorkspace(concertId: string) {
+    const requestId = ++workspaceRequestRef.current;
+    setWorkspaceLoading(true);
+    setVipDirectoryLoading(true);
+    setVipGuests([]);
+    setVipSummaries([]);
+    setPendingVipFile(null);
+    setVipSearchQuery("");
     setError("");
     try {
       const [nextDetail, nextStats, nextBio, nextConflicts, nextRefunds, nextVips] = await Promise.all([
@@ -358,6 +377,9 @@ export default function AdminDashboardPage() {
         adminGet<AdminOrder[]>(`/api/admin/orders?concertId=${concertId}&status=REFUND_REQUIRED`),
         getVipGuests(concertId)
       ]);
+      if (requestId !== workspaceRequestRef.current) {
+        return;
+      }
       setDetail(nextDetail);
       setForm(fromDetail(nextDetail));
       setStats(nextStats);
@@ -371,19 +393,31 @@ export default function AdminDashboardPage() {
       setVipImportError("");
       setVipDirectoryMessage("");
       setVipDirectoryError("");
+      setPendingVipFile(null);
       setTicketForm(EMPTY_TICKET);
     } catch (caught) {
-      handleError(caught);
+      if (requestId === workspaceRequestRef.current) {
+        handleError(caught);
+      }
+    } finally {
+      if (requestId === workspaceRequestRef.current) {
+        setWorkspaceLoading(false);
+        setVipDirectoryLoading(false);
+      }
     }
   }
 
   async function loadBio(concertId: string) {
     try {
       const nextBio = await adminGet<ArtistBio>(`/api/admin/concerts/${concertId}/artist-bio`);
-      setBio(nextBio);
-      setBioDraft(nextBio.artistBioDraft || "");
+      if (selectedIdRef.current === concertId) {
+        setBio(nextBio);
+        setBioDraft(nextBio.artistBioDraft || "");
+      }
     } catch (caught) {
-      handleError(caught);
+      if (selectedIdRef.current === concertId) {
+        handleError(caught);
+      }
     }
   }
 
@@ -560,63 +594,44 @@ export default function AdminDashboardPage() {
     });
   }
 
-  async function handleVipImport() {
-    setImporting(true);
-    setVipImportMessage("");
-    setVipImportError("");
-    try {
-      const summaries = await triggerVipImport();
-      setVipSummaries(summaries);
-      if (summaries.length === 0) {
-        setVipImportMessage("No new files found to process.");
-      } else {
-        setVipImportMessage(`Successfully processed ${summaries.length} import file(s).`);
-      }
-      setTimeout(() => {
-        setVipImportMessage("");
-      }, 5000);
-      if (detail?.id) {
-        const nextVips = await getVipGuests(detail.id);
-        setVipGuests(nextVips);
-      }
-    } catch (caught) {
-      setVipImportError(caught instanceof Error ? caught.message : String(caught));
-      setTimeout(() => {
-        setVipImportError("");
-      }, 5000);
-    } finally {
-      setImporting(false);
-    }
-  }
-
   async function processVipFile(file: File) {
+    if (!detail) {
+      setVipImportError("Select a concert before importing a VIP guest list.");
+      return;
+    }
+    const concertId = detail.id;
     setImporting(true);
     setVipImportMessage("");
     setVipImportError("");
     try {
-      const summaries = await uploadVipCsv(file);
+      const summaries = await uploadVipCsv(file, concertId);
+      if (selectedIdRef.current !== concertId) {
+        return;
+      }
       setVipSummaries(summaries);
       if (summaries.length === 0) {
         setVipImportMessage("No summaries returned from CSV upload.");
       } else {
         const totalRows = summaries.reduce((acc, s) => acc + s.totalRows, 0);
         const inserted = summaries.reduce((acc, s) => acc + s.inserted, 0);
+        const updated = summaries.reduce((acc, s) => acc + s.updated, 0);
+        const deactivated = summaries.reduce((acc, s) => acc + s.deactivated, 0);
         const skipped = summaries.reduce((acc, s) => acc + s.skipped, 0);
         const errored = summaries.reduce((acc, s) => acc + s.errored, 0);
-        setVipImportMessage(`Successfully uploaded and processed CSV. Total rows: ${totalRows}, Inserted: ${inserted}, Skipped: ${skipped}, Errored: ${errored}.`);
+        const failed = summaries.some((summary) => summary.archive === "error");
+        const result = `Rows ${totalRows}: ${inserted} inserted, ${updated} updated, ${deactivated} deactivated, ${skipped} skipped, ${errored} errors.`;
+        if (failed) {
+          setVipImportError(`${result} Review the import summary below.`);
+        } else {
+          setVipImportMessage(result);
+        }
       }
-      setTimeout(() => {
-        setVipImportMessage("");
-      }, 7000);
-      if (detail?.id) {
-        const nextVips = await getVipGuests(detail.id);
-        setVipGuests(nextVips);
-      }
+      setPendingVipFile(null);
+      await refreshVipDirectory(concertId);
     } catch (caught) {
-      setVipImportError(caught instanceof Error ? caught.message : String(caught));
-      setTimeout(() => {
-        setVipImportError("");
-      }, 7000);
+      if (selectedIdRef.current === concertId) {
+        setVipImportError(caught instanceof Error ? caught.message : String(caught));
+      }
     } finally {
       setImporting(false);
     }
@@ -624,8 +639,28 @@ export default function AdminDashboardPage() {
 
   async function handleVipCsvUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
-    void processVipFile(file);
+    event.target.value = "";
+    if (file) {
+      reviewVipFile(file);
+    }
+  }
+
+  function reviewVipFile(file: File) {
+    setVipImportMessage("");
+    setVipImportError("");
+    if (!detail) {
+      setVipImportError("Select a concert before choosing a VIP CSV.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setVipImportError("Only CSV files are supported.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setVipImportError("VIP CSV files must be 5MB or smaller.");
+      return;
+    }
+    setPendingVipFile(file);
   }
 
   const handleDrag = (e: React.DragEvent) => {
@@ -645,12 +680,7 @@ export default function AdminDashboardPage() {
 
     const file = e.dataTransfer?.files?.[0];
     if (file) {
-      if (!file.name.toLowerCase().endsWith(".csv")) {
-        setVipImportError("Only CSV files are supported.");
-        setTimeout(() => setVipImportError(""), 5000);
-        return;
-      }
-      void processVipFile(file);
+      reviewVipFile(file);
     }
   };
 
@@ -659,21 +689,41 @@ export default function AdminDashboardPage() {
     if (!window.confirm(`Are you sure you want to remove VIP guest "${vipName}"?`)) {
       return;
     }
+    const concertId = detail.id;
     setVipDirectoryMessage("");
     setVipDirectoryError("");
+    setDeletingVipId(vipId);
     try {
-      await deleteVipGuest(detail.id, vipId);
-      const nextVips = await getVipGuests(detail.id);
-      setVipGuests(nextVips);
-      setVipDirectoryMessage(`Successfully removed VIP guest "${vipName}".`);
-      setTimeout(() => {
-        setVipDirectoryMessage("");
-      }, 5000);
+      await deleteVipGuest(concertId, vipId);
+      await refreshVipDirectory(concertId);
+      if (selectedIdRef.current === concertId) {
+        setVipDirectoryMessage(`Successfully removed VIP guest "${vipName}".`);
+      }
     } catch (caught) {
-      setVipDirectoryError(caught instanceof Error ? caught.message : String(caught));
-      setTimeout(() => {
-        setVipDirectoryError("");
-      }, 5000);
+      if (selectedIdRef.current === concertId) {
+        setVipDirectoryError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      setDeletingVipId("");
+    }
+  }
+
+  async function refreshVipDirectory(concertId: string) {
+    setVipDirectoryLoading(true);
+    setVipDirectoryError("");
+    try {
+      const nextVips = await getVipGuests(concertId);
+      if (selectedIdRef.current === concertId) {
+        setVipGuests(nextVips);
+      }
+    } catch (caught) {
+      if (selectedIdRef.current === concertId) {
+        setVipDirectoryError(caught instanceof Error ? caught.message : "Could not load VIP guests");
+      }
+    } finally {
+      if (selectedIdRef.current === concertId) {
+        setVipDirectoryLoading(false);
+      }
     }
   }
 
@@ -1077,7 +1127,7 @@ export default function AdminDashboardPage() {
               Current concert
               <select
                 className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={loading || concerts.length === 0}
+                disabled={loading || workspaceLoading || importing || saving || Boolean(deletingVipId) || concerts.length === 0}
                 value={selectedId}
                 onChange={(event) => setSelectedId(event.target.value)}
               >
@@ -1086,7 +1136,7 @@ export default function AdminDashboardPage() {
                 </option>
                 {concerts.map((concert) => (
                   <option key={concert.id} value={concert.id}>
-                    {concert.name} — {concert.eventCode}
+                    {concert.name} - {concert.eventCode}
                   </option>
                 ))}
               </select>
@@ -1094,6 +1144,7 @@ export default function AdminDashboardPage() {
             {activeSection === "concerts" ? (
               <button
                 className={ui.secondaryButton}
+                disabled={workspaceLoading || importing || saving || Boolean(deletingVipId)}
                 type="button"
                 onClick={() => {
                   setDetail(null);
@@ -1110,6 +1161,7 @@ export default function AdminDashboardPage() {
             ) : null}
           </div>
           {loading ? <p className={`${ui.muted} mt-4`}>Loading concerts...</p> : null}
+          {workspaceLoading ? <p className={`${ui.muted} mt-4`} role="status">Loading event workspace...</p> : null}
           {!loading && concerts.length === 0 ? <p className={`${ui.muted} mt-4`}>No concerts yet.</p> : null}
           {selectedConcert ? (
             <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-neutral-300 pt-4 text-sm text-neutral-700">
@@ -1125,7 +1177,9 @@ export default function AdminDashboardPage() {
           <div className="flex flex-wrap items-end justify-between gap-5 border-b border-neutral-950 pb-5">
             <div>
               <p className={ui.eyebrow}>{activeSectionMeta.label}</p>
-              <h2 className="mt-2 text-3xl font-black">{detail?.name || (activeSection === "concerts" ? "New concert" : "Choose a concert")}</h2>
+              <h2 className="mt-2 text-3xl font-black">
+                {workspaceLoading ? "Loading concert" : detail?.name || (activeSection === "concerts" ? "New concert" : "Choose a concert")}
+              </h2>
               {selectedConcert ? <p className={`${ui.muted} mt-2`}>{selectedConcert.venue}</p> : null}
             </div>
             {detail && activeSection === "concerts" ? (
@@ -1328,51 +1382,90 @@ export default function AdminDashboardPage() {
             </section> : null}
 
             {activeSection === "vip" ? <section className={ui.panel} aria-labelledby="vip-import-title">
-              <h3 className="text-xl font-bold" id="vip-import-title">VIP Guest Import</h3>
-              <p className={`${ui.muted} mt-2`}>
-                Upload and process VIP guest list CSV files directly in your workspace.
-              </p>
-              
+              <div className={ui.sectionHeading}>
+                <div>
+                  <h3 className="text-xl font-bold" id="vip-import-title">VIP guest snapshot</h3>
+                  <p className={`${ui.muted} mt-2`}>
+                    Upload the latest complete guest list for the selected concert.
+                  </p>
+                </div>
+                {detail ? <span className={ui.statusBadge}>{detail.eventCode}</span> : null}
+              </div>
+
+              <div className={`${ui.alertWarning} mt-4`}>
+                Guests missing from a valid CSV are deactivated for this concert. If any row is invalid, deactivation is skipped to protect the existing list.
+              </div>
+
               <div className="mt-4 grid gap-4">
                 <label
-                  className={`grid gap-2 border border-dashed p-6 text-center cursor-pointer transition-colors ${
+                  className={`grid min-h-36 cursor-pointer place-content-center gap-2 border border-dashed p-5 text-center transition-colors ${
                     dragActive ? "border-neutral-950 bg-neutral-100" : "border-neutral-500 hover:bg-neutral-50"
-                  }`}
+                  } ${!detail || importing || workspaceLoading ? "pointer-events-none opacity-50" : ""}`}
+                  aria-disabled={!detail || importing || workspaceLoading}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={handleDrop}
                 >
-                  <span className="font-semibold text-neutral-900">Drag & Drop VIP CSV file here</span>
-                  <span className="text-xs text-neutral-600">or click to browse your files. CSV format must contain event_code, name, phone, zone columns.</span>
+                  <span className="font-semibold text-neutral-900">Drop a VIP CSV here or choose a file</span>
+                  <span className="text-xs leading-5 text-neutral-600">
+                    Required columns: event_code and phone. Optional: name, sponsor, zone. Maximum 5MB.
+                  </span>
                   <input
                     accept=".csv,text/csv"
                     className="hidden"
-                    disabled={importing}
+                    disabled={!detail || importing || workspaceLoading}
                     type="file"
                     onChange={handleVipCsvUpload}
                   />
                 </label>
 
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-neutral-500">Or process files from server folder:</span>
-                  <button
-                    className={`${ui.secondaryButton} ${ui.compactButton}`}
-                    disabled={importing}
-                    type="button"
-                    onClick={handleVipImport}
-                  >
-                    {importing ? "Importing..." : "Scan Directory"}
-                  </button>
-                </div>
+                {pendingVipFile && detail ? (
+                  <div className="border border-neutral-950 p-4" role="group" aria-label="Review VIP import">
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                      <div>
+                        <p className="font-semibold">{pendingVipFile.name}</p>
+                        <p className={`${ui.muted} mt-1`}>
+                          {formatFileSize(pendingVipFile.size)} / {detail.name} / {detail.eventCode}
+                        </p>
+                      </div>
+                      <span className={ui.statusBadge}>Ready to import</span>
+                    </div>
+                    <p className={`${ui.muted} mt-3`}>
+                      The backend will reject the file if any event_code points to another concert.
+                    </p>
+                    <div className={`${ui.actionRow} mt-4`}>
+                      <button
+                        className={ui.primaryButton}
+                        disabled={importing}
+                        type="button"
+                        onClick={() => void processVipFile(pendingVipFile)}
+                      >
+                        {importing ? "Importing..." : "Import snapshot"}
+                      </button>
+                      <button
+                        className={ui.ghostButton}
+                        disabled={importing}
+                        type="button"
+                        onClick={() => setPendingVipFile(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
-                {vipImportMessage ? <p className={`${ui.alertSuccess} mt-4`}>{vipImportMessage}</p> : null}
-                {vipImportError ? <p className={`${ui.alertError} mt-4`} role="alert">{vipImportError}</p> : null}
+                {vipImportMessage ? (
+                  <p className={vipImportNeedsAttention ? ui.alertWarning : ui.alertSuccess} role="status">
+                    {vipImportMessage}
+                  </p>
+                ) : null}
+                {vipImportError ? <p className={ui.alertError} role="alert">{vipImportError}</p> : null}
               </div>
 
               {vipSummaries.length > 0 ? (
                 <div className="mt-5">
-                  <h4 className="font-semibold text-sm mb-3">Import Summaries</h4>
+                  <h4 className="mb-3 text-sm font-semibold">Latest import result</h4>
                   <div className={ui.tableWrap}>
                     <table className={ui.table}>
                       <thead>
@@ -1388,12 +1481,12 @@ export default function AdminDashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {vipSummaries.map((summary, idx) => (
-                          <tr key={idx}>
+                        {vipSummaries.map((summary) => (
+                          <tr key={`${summary.fileName}:${summary.archive}:${summary.message}`}>
                             <td>
-                              <span className="font-semibold block">{summary.fileName}</span>
+                              <span className="block font-semibold">{summary.fileName}</span>
                               {summary.archived && summary.archive ? (
-                                <span className="block text-xs text-neutral-500 mt-1">Archived to: {summary.archive}</span>
+                                <span className="mt-1 block text-xs text-neutral-500">Archive: {summary.archive}</span>
                               ) : null}
                             </td>
                             <td>{summary.totalRows}</td>
@@ -1404,7 +1497,7 @@ export default function AdminDashboardPage() {
                             <td className={summary.errored > 0 ? "text-red-700 font-semibold" : ""}>
                               {summary.errored}
                             </td>
-                            <td>{summary.message || "-"}</td>
+                            <td className="min-w-64">{summary.message || "-"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1415,74 +1508,133 @@ export default function AdminDashboardPage() {
             </section> : null}
 
             {activeSection === "vip" ? <section className={ui.panel} aria-labelledby="vip-directory-title">
-              <h3 className="text-xl font-bold" id="vip-directory-title">
-                VIP Guest Directory {detail ? `— ${detail.name}` : ""}
-              </h3>
-              <p className={`${ui.muted} mt-2`}>
-                Search and view the active list of imported VIP guests for this event.
-              </p>
+              <div className={ui.sectionHeading}>
+                <div>
+                  <h3 className="text-xl font-bold" id="vip-directory-title">VIP guest directory</h3>
+                  <p className={`${ui.muted} mt-2`}>
+                    {detail ? `${detail.name} / ${detail.eventCode}` : "Choose a concert to view its active guest list."}
+                  </p>
+                </div>
+                <span className={ui.statusBadge}>{vipGuests.length} active</span>
+              </div>
 
               {vipDirectoryMessage ? <p className={`${ui.alertSuccess} mt-4`}>{vipDirectoryMessage}</p> : null}
               {vipDirectoryError ? <p className={`${ui.alertError} mt-4`} role="alert">{vipDirectoryError}</p> : null}
-              
-              <div className="mt-4">
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <input
-                  className="w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950"
+                  aria-label="Filter VIP guests"
+                  className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:opacity-50"
+                  disabled={!detail || vipDirectoryLoading}
                   placeholder="Filter by name, phone, sponsor, or zone..."
-                  type="text"
+                  type="search"
                   value={vipSearchQuery}
                   onChange={(e) => setVipSearchQuery(e.target.value)}
                 />
+                <button
+                  className={ui.secondaryButton}
+                  disabled={!detail || vipDirectoryLoading}
+                  type="button"
+                  onClick={() => detail && void refreshVipDirectory(detail.id)}
+                >
+                  {vipDirectoryLoading ? "Refreshing..." : "Refresh list"}
+                </button>
               </div>
+              <p className={`${ui.muted} mt-3`} aria-live="polite">
+                Showing {filteredVips.length} of {vipGuests.length} guests
+              </p>
 
               <div className="mt-5">
-                {filteredVips.length > 0 ? (
-                  <div className={ui.tableWrap}>
-                    <table className={ui.table}>
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Phone</th>
-                          <th>Sponsor</th>
-                          <th>Zone</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredVips.map((vip) => (
-                          <tr key={vip.id}>
-                            <td>{vip.name}</td>
-                            <td>{vip.phoneMasked}</td>
-                            <td>{vip.sponsor || "-"}</td>
-                            <td>
-                              <span className={ui.statusBadge}>{vip.zone}</span>
-                            </td>
-                            <td>
-                              {vip.entered ? (
-                                <span className="inline-flex border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
-                                  Entered {vip.enteredAt ? formatDate(vip.enteredAt) : ""}
-                                </span>
-                              ) : (
-                                <span className={ui.statusBadge}>
-                                  Registered
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <button
-                                className={`${ui.dangerButton} ${ui.compactButton}`}
-                                type="button"
-                                onClick={() => handleDeleteVip(vip.id, vip.name)}
-                              >
-                                Remove
-                              </button>
-                            </td>
+                {vipDirectoryLoading && vipGuests.length === 0 ? (
+                  <p className={ui.muted} role="status">Loading VIP guests...</p>
+                ) : filteredVips.length > 0 ? (
+                  <>
+                    <div className="grid gap-3 sm:hidden">
+                      {filteredVips.map((vip) => (
+                        <article className="border border-neutral-300 p-4" key={vip.id}>
+                          <div className="flex items-start justify-between gap-3">
+                            <h4 className="font-semibold">{vip.name}</h4>
+                            {vip.entered ? (
+                              <span className="inline-flex shrink-0 border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                                Entered
+                              </span>
+                            ) : (
+                              <span className={`${ui.statusBadge} shrink-0`}>Registered</span>
+                            )}
+                          </div>
+                          <dl className="mt-4 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+                            <dt className="text-neutral-600">Phone</dt>
+                            <dd>{vip.phoneMasked}</dd>
+                            <dt className="text-neutral-600">Sponsor</dt>
+                            <dd>{vip.sponsor || "-"}</dd>
+                            <dt className="text-neutral-600">Zone</dt>
+                            <dd><span className={ui.statusBadge}>{vip.zone}</span></dd>
+                            {vip.enteredAt ? (
+                              <>
+                                <dt className="text-neutral-600">Entered</dt>
+                                <dd>{formatDate(vip.enteredAt)}</dd>
+                              </>
+                            ) : null}
+                          </dl>
+                          <button
+                            className={`${ui.dangerButton} mt-4 w-full`}
+                            disabled={Boolean(deletingVipId)}
+                            type="button"
+                            onClick={() => handleDeleteVip(vip.id, vip.name)}
+                          >
+                            {deletingVipId === vip.id ? "Removing..." : "Remove guest"}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                    <div className={`${ui.tableWrap} hidden sm:block`}>
+                      <table className={ui.table}>
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Sponsor</th>
+                            <th>Zone</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {filteredVips.map((vip) => (
+                            <tr key={vip.id}>
+                              <td>{vip.name}</td>
+                              <td>{vip.phoneMasked}</td>
+                              <td>{vip.sponsor || "-"}</td>
+                              <td>
+                                <span className={ui.statusBadge}>{vip.zone}</span>
+                              </td>
+                              <td>
+                                {vip.entered ? (
+                                  <span className="inline-flex border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                                    Entered {vip.enteredAt ? formatDate(vip.enteredAt) : ""}
+                                  </span>
+                                ) : (
+                                  <span className={ui.statusBadge}>
+                                    Registered
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <button
+                                  className={`${ui.dangerButton} ${ui.compactButton}`}
+                                  disabled={Boolean(deletingVipId)}
+                                  type="button"
+                                  onClick={() => handleDeleteVip(vip.id, vip.name)}
+                                >
+                                  {deletingVipId === vip.id ? "Removing..." : "Remove"}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 ) : (
                   <p className={ui.muted}>
                     {vipGuests.length === 0
@@ -1657,4 +1809,14 @@ function formatMoney(value: number) {
 
 function shortId(value: string) {
   return value.slice(0, 8);
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

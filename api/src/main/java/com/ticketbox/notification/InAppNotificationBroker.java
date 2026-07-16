@@ -3,6 +3,7 @@ package com.ticketbox.notification;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketbox.notification.config.NotificationPubSubConfig;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
@@ -30,6 +31,12 @@ public class InAppNotificationBroker {
         emitter.onCompletion(() -> remove(userId, emitter));
         emitter.onTimeout(() -> remove(userId, emitter));
         emitter.onError(ignored -> remove(userId, emitter));
+        try {
+            emitter.send(SseEmitter.event().comment("connected").reconnectTime(5_000L));
+        } catch (IOException | IllegalStateException ex) {
+            remove(userId, emitter);
+            emitter.completeWithError(ex);
+        }
         return emitter;
     }
 
@@ -59,10 +66,26 @@ public class InAppNotificationBroker {
         }
     }
 
+    @Scheduled(fixedDelayString = "${ticketbox.notifications.heartbeat-delay-ms:25000}")
+    void sendHeartbeats() {
+        for (Map.Entry<UUID, CopyOnWriteArrayList<SseEmitter>> entry : emitters.entrySet()) {
+            for (SseEmitter emitter : entry.getValue()) {
+                try {
+                    emitter.send(SseEmitter.event().comment("heartbeat"));
+                } catch (IOException | IllegalStateException ex) {
+                    remove(entry.getKey(), emitter);
+                }
+            }
+        }
+    }
+
     private void remove(UUID userId, SseEmitter emitter) {
         List<SseEmitter> userEmitters = emitters.get(userId);
         if (userEmitters != null) {
             userEmitters.remove(emitter);
+            if (userEmitters.isEmpty()) {
+                emitters.remove(userId, userEmitters);
+            }
         }
     }
 }

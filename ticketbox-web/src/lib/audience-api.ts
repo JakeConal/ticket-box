@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "./http-error";
+
 export type Session = {
   userId: string;
   email: string;
@@ -96,27 +98,33 @@ export type PurchaseDraft = {
 };
 
 const ORDER_HISTORY_KEY = "ticketbox.audience.orders";
+export const AUDIENCE_AUTH_CHANGED_EVENT = "ticketbox:audience-auth-changed";
 
 export async function getSession() {
   return request<Session>("/audience-auth/me", {}, { allowUnauthorized: true });
 }
 
 export async function loginAudience(email: string, password: string) {
-  return request<Session>("/audience-auth/login", {
+  const session = await request<Session>("/audience-auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
-  });
+  }, { redirectUnauthorized: false });
+  notifyAuthChanged();
+  return session;
 }
 
 export async function registerAudience(email: string, password: string) {
-  return request<Session>("/audience-auth/register", {
+  const session = await request<Session>("/audience-auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password })
-  });
+  }, { redirectUnauthorized: false });
+  notifyAuthChanged();
+  return session;
 }
 
 export async function logoutAudience() {
   await request<{ ok: boolean }>("/audience-auth/logout", { method: "POST" }, { allowUnauthorized: true });
+  notifyAuthChanged();
 }
 
 export async function listConcerts(page = 0, size = 8) {
@@ -131,10 +139,10 @@ export async function getAvailability(id: string) {
   return request<TicketAvailability[]>(`/api/concerts/${id}/availability`);
 }
 
-export async function purchaseTickets(draft: PurchaseDraft) {
+export async function purchaseTickets(draft: PurchaseDraft, idempotencyKey: string) {
   return request<PurchaseResponse>("/audience-api/purchase", {
     method: "POST",
-    headers: { "Idempotency-Key": crypto.randomUUID() },
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(draft)
   });
 }
@@ -147,6 +155,12 @@ export async function enterQueue(concertId: string) {
 
 export async function getQueueStatus(concertId: string) {
   return request<QueueStatus>(`/audience-api/queue/${concertId}/status`);
+}
+
+export async function leaveQueue(concertId: string) {
+  await request<void>(`/audience-api/queue/${concertId}/leave`, {
+    method: "DELETE"
+  });
 }
 
 export async function getOrder(id: string) {
@@ -195,10 +209,14 @@ export function shortId(value: string) {
   return value.slice(0, 8);
 }
 
+function notifyAuthChanged() {
+  window.dispatchEvent(new Event(AUDIENCE_AUTH_CHANGED_EVENT));
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  options: { allowUnauthorized?: boolean } = {}
+  options: { allowUnauthorized?: boolean; redirectUnauthorized?: boolean } = {}
 ): Promise<T | null> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) {
@@ -211,20 +229,13 @@ async function request<T>(
   if (response.status === 401 && options.allowUnauthorized) {
     return null;
   }
-  if (response.status === 401) {
+  if (response.status === 401 && options.redirectUnauthorized !== false) {
     window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
     throw new Error("Authentication required");
   }
   if (!response.ok) {
     const message = await response.text();
-    let parsedMessage = "";
-    try {
-      const parsed = JSON.parse(message) as { message?: string; detail?: string; error?: string };
-      parsedMessage = parsed.message || parsed.detail || parsed.error || "";
-    } catch {
-      parsedMessage = message;
-    }
-    throw new Error(parsedMessage || `Request failed with ${response.status}`);
+    throw new Error(apiErrorMessage(message, response.status));
   }
   if (response.status === 204) {
     return null;

@@ -56,7 +56,8 @@ public class QueueAdmissionService {
         }
         try {
             String userId = user.id().toString();
-            Optional<QueueStatusResponse> admitted = admittedStatus(concertId, admittedKey(concertId, user.id()));
+            queueStore.deleteValue(cancelledKey(concertId, user.id()));
+            Optional<QueueStatusResponse> admitted = admittedStatus(concertId, user.id());
             if (admitted.isPresent()) {
                 return admitted.get();
             }
@@ -78,10 +79,23 @@ public class QueueAdmissionService {
             return inactive(concertId);
         }
         try {
-            return admittedStatus(concertId, admittedKey(concertId, user.id()))
+            return admittedStatus(concertId, user.id())
                     .orElseGet(() -> waitingStatus(concertId, user));
         } catch (ResponseStatusException ex) {
             throw ex;
+        } catch (RuntimeException ex) {
+            throw queueUnavailable(concertId, ex);
+        }
+    }
+
+    public void leaveQueue(UUID concertId, UserPrincipal user) {
+        try {
+            queueStore.setValue(
+                    cancelledKey(concertId, user.id()),
+                    "1",
+                    properties.getQueueTtl());
+            queueStore.remove(queueKey(concertId), user.id().toString());
+            queueStore.deleteValue(admittedKey(concertId, user.id()));
         } catch (RuntimeException ex) {
             throw queueUnavailable(concertId, ex);
         }
@@ -95,6 +109,9 @@ public class QueueAdmissionService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Waiting queue admission token is required");
         }
         try {
+            if (queueStore.getValue(cancelledKey(concertId, user.id())).isPresent()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User left the waiting queue");
+            }
             String storedToken = queueStore.getValue(admittedKey(concertId, user.id()))
                     .orElseThrow(() -> new ResponseStatusException(
                             HttpStatus.FORBIDDEN,
@@ -141,6 +158,12 @@ public class QueueAdmissionService {
             int admitted = 0;
             for (String rawUserId : userIds) {
                 UUID userId = UUID.fromString(rawUserId);
+                if (queueStore.getValue(cancelledKey(concertId, userId)).isPresent()) {
+                    continue;
+                }
+                if (queueStore.rank(queueKey(concertId), rawUserId).isPresent()) {
+                    continue;
+                }
                 User user = userRepository.findById(userId).orElse(null);
                 if (user == null) {
                     continue;
@@ -171,7 +194,12 @@ public class QueueAdmissionService {
                 null);
     }
 
-    private Optional<QueueStatusResponse> admittedStatus(UUID concertId, String admittedKey) {
+    private Optional<QueueStatusResponse> admittedStatus(UUID concertId, UUID userId) {
+        String admittedKey = admittedKey(concertId, userId);
+        if (queueStore.getValue(cancelledKey(concertId, userId)).isPresent()) {
+            queueStore.deleteValue(admittedKey);
+            return Optional.empty();
+        }
         Optional<String> token = queueStore.getValue(admittedKey);
         if (token.isEmpty()) {
             return Optional.empty();
@@ -268,5 +296,9 @@ public class QueueAdmissionService {
 
     private String admittedKey(UUID concertId, UUID userId) {
         return "queue:admitted:%s:%s".formatted(concertId, userId);
+    }
+
+    private String cancelledKey(UUID concertId, UUID userId) {
+        return "queue:cancelled:%s:%s".formatted(concertId, userId);
     }
 }

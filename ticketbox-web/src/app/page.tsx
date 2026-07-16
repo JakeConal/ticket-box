@@ -26,7 +26,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void getSession().then((nextSession) => setSession(nextSession));
+    void getSession()
+      .then((nextSession) => setSession(nextSession))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {

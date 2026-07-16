@@ -70,7 +70,7 @@ public class PaymentOrderService {
     }
 
     @Transactional
-    public Map<String, String> handleCallback(PaymentProvider provider, Map<String, String> params) {
+    public PaymentCallbackResult handleCallback(PaymentProvider provider, Map<String, String> params) {
         PaymentVerificationResult result = paymentGatewayManager.verifyCallback(provider, params);
         if (!result.valid()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, result.message());
@@ -80,7 +80,7 @@ public class PaymentOrderService {
         } else {
             orderReleaseService.markFailedAndRelease(result.orderId());
         }
-        return Map.of("status", "ok");
+        return new PaymentCallbackResult(result.orderId(), result.success(), result.message());
     }
 
     public boolean reconcilePendingConfirmation(UUID orderId) {
@@ -257,5 +257,8 @@ public class PaymentOrderService {
             String status,
             String paymentProvider,
             BigDecimal amount) {
+    }
+
+    public record PaymentCallbackResult(UUID orderId, boolean success, String message) {
     }
 }

@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
@@ -97,21 +98,27 @@ public class TicketPurchaseService {
             return new PurchaseResult(idempotencyKey, pendingPurchase.existingResponse().get());
         }
 
-        String paymentUrl;
+        PurchaseResponse response;
         try {
-            paymentUrl = paymentGatewayManager.createPaymentUrl(new PaymentGatewayRequest(
+            String paymentUrl = paymentGatewayManager.createPaymentUrl(new PaymentGatewayRequest(
                     pendingPurchase.orderId(),
                     user.id(),
                     pendingPurchase.concertId(),
                     request.paymentProvider(),
                     pendingPurchase.amount()));
-        } catch (ResponseStatusException ex) {
-            orderReleaseService.markFailedAndRelease(pendingPurchase.orderId());
+            response = new PurchaseResponse(pendingPurchase.orderId(), paymentUrl);
+            storeResult(idempotencyKey, pendingPurchase.orderId(), response);
+        } catch (RuntimeException ex) {
+            try {
+                orderReleaseService.markPaymentSetupFailedAndRelease(
+                        pendingPurchase.orderId(),
+                        idempotencyKey);
+            } catch (RuntimeException cleanupError) {
+                ex.addSuppressed(cleanupError);
+            }
             throw ex;
         }
 
-        PurchaseResponse response = new PurchaseResponse(pendingPurchase.orderId(), paymentUrl);
-        storeResult(idempotencyKey, pendingPurchase.orderId(), response);
         return new PurchaseResult(idempotencyKey, response);
     }
 
@@ -205,6 +212,13 @@ public class TicketPurchaseService {
     }
 
     private TicketTypeSnapshot findTicketType(UUID ticketTypeId) {
+        List<UUID> lockedIds = jdbcTemplate.query(
+                "select id from ticket_types where id = ? for update",
+                (rs, rowNum) -> rs.getObject("id", UUID.class),
+                ticketTypeId);
+        if (lockedIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket type not found");
+        }
         return jdbcTemplate.query("""
                 select tt.id,
                        tt.concert_id,
