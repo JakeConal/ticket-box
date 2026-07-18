@@ -7,6 +7,8 @@ RUN pnpm install --filter ticketbox-web... --frozen-lockfile
 
 FROM deps AS build
 WORKDIR /workspace
+ARG API_PROXY_BASE_URL
+ENV API_PROXY_BASE_URL=$API_PROXY_BASE_URL
 COPY ticketbox-web ./ticketbox-web
 RUN pnpm --filter ticketbox-web build
 
