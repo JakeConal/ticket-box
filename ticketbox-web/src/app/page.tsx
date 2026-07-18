@@ -24,6 +24,8 @@ export default function Home() {
   const [availability, setAvailability] = useState<Record<string, AvailabilitySummary>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [warmingUp, setWarmingUp] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     void getSession()
@@ -34,8 +36,14 @@ export default function Home() {
   useEffect(() => {
     let ignore = false;
     setLoading(true);
+    setWarmingUp(false);
     setError("");
-    listConcerts(pageNumber)
+    setPage(null);
+    loadConcertsWithRetry(pageNumber, () => {
+      if (!ignore) {
+        setWarmingUp(true);
+      }
+    })
       .then(async (nextPage) => {
         if (!nextPage || ignore) {
           return;
@@ -43,7 +51,7 @@ export default function Home() {
         setPage(nextPage);
         const pairs = await Promise.all(
           nextPage.content.map(async (concert) => {
-            const zones = await getAvailability(concert.id);
+            const zones = await getAvailability(concert.id).catch(() => []);
             return [concert.id, summarizeAvailability(zones || [])] as const;
           })
         );
@@ -51,16 +59,21 @@ export default function Home() {
           setAvailability(Object.fromEntries(pairs));
         }
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load concerts"))
+      .catch((caught) => {
+        if (!ignore) {
+          setError(caught instanceof Error ? caught.message : "Could not load concerts");
+        }
+      })
       .finally(() => {
         if (!ignore) {
           setLoading(false);
+          setWarmingUp(false);
         }
       });
     return () => {
       ignore = true;
     };
-  }, [pageNumber]);
+  }, [pageNumber, reloadKey]);
 
   const concerts = page?.content || [];
   const canGoPrevious = pageNumber > 0;
@@ -125,17 +138,31 @@ export default function Home() {
         </div>
       </section>
 
-      {error ? <p className={`${ui.alertError} mt-6`} role="alert">{error}</p> : null}
+      {error ? (
+        <div className={`${ui.alertError} mt-6 flex flex-wrap items-center justify-between gap-3`} role="alert">
+          <span>{error}</span>
+          <button className={`${ui.secondaryButton} ${ui.compactButton}`} type="button" onClick={() => setReloadKey((current) => current + 1)}>
+            Try again
+          </button>
+        </div>
+      ) : null}
 
       <div className="mt-12 flex flex-wrap items-end justify-between gap-4" id="concerts">
         <div>
           <p className={ui.eyebrow}>Upcoming</p>
           <h2 className="mt-2 text-2xl font-bold">Concerts on sale</h2>
         </div>
-        <span className="border border-neutral-500 px-3 py-2 text-sm font-semibold text-neutral-700">{page?.totalElements ?? 0} events</span>
+        <span className="border border-neutral-500 px-3 py-2 text-sm font-semibold text-neutral-700">
+          {loading ? (warmingUp ? "Starting service..." : "Loading...") : error ? "Unavailable" : `${page?.totalElements ?? 0} events`}
+        </span>
       </div>
 
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={loading} aria-label="Concerts on sale">
+        {loading ? (
+          <p className={ui.emptyState} role="status">
+            {warmingUp ? "The ticket service is starting. Concerts will appear automatically." : "Loading concerts..."}
+          </p>
+        ) : null}
         {concerts.map((concert) => (
           <ConcertCard
             availability={availability[concert.id] || {}}
@@ -143,7 +170,7 @@ export default function Home() {
             key={concert.id}
           />
         ))}
-        {!loading && concerts.length === 0 ? <p className={ui.emptyState}>No published concerts yet.</p> : null}
+        {!loading && !error && concerts.length === 0 ? <p className={ui.emptyState}>No published concerts yet.</p> : null}
       </section>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-300 pt-5 text-sm text-neutral-600">
@@ -157,6 +184,30 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+async function loadConcertsWithRetry(pageNumber: number, onRetry: () => void) {
+  const retryDelays = [2500, 5000, 7500];
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    try {
+      return await listConcerts(pageNumber);
+    } catch (error) {
+      lastError = error;
+      if (attempt === retryDelays.length) {
+        break;
+      }
+      onRetry();
+      await delay(retryDelays[attempt]);
+    }
+  }
+
+  throw lastError;
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function AudienceNav({ session, onLogout }: { session: Session | null; onLogout: () => void }) {
