@@ -1,130 +1,231 @@
 # TicketBox
 
-TicketBox is a Spring Boot, Next.js, PostgreSQL, Redis, and Nginx ticketing platform with organizer concert management, audience purchase flow, signed QR tickets, checker gate APIs, offline check-in sync, VIP CSV import, payment callbacks, AI artist bio review, caching, rate limiting, notifications, and sale-open waiting queues.
+TicketBox is an end-to-end concert ticketing platform for audiences, event
+organizers, and gate staff. It combines ticket discovery and checkout,
+organizer operations, signed QR tickets, VIP guest management, and resilient
+online/offline check-in in one repository.
 
-## Prerequisites
+## Product Screens
 
-- Docker Desktop with WSL integration enabled, or Docker Engine inside WSL.
-- Node.js 22+ for local smoke and load scripts.
-- OpenSpec CLI available on `PATH` for change validation.
-- Ports `8088`, `8080`, `3000`, `5432`, and `6379` free, or override them in `docker-compose.yml`.
+### Audience concert discovery
 
-Copy `.env.example` to `.env` for local overrides when needed. The defaults are usable for a local demo.
+![TicketBox audience concert browser](assets/screenshots/audience-home.png)
 
-## Run
+### Ticket selection and venue map
 
-From the repository root:
+![TicketBox concert detail and seat map](assets/screenshots/concert-detail.png)
 
-```sh
-docker compose up --build
+### Organizer operations
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-dashboard.png" alt="TicketBox organizer dashboard" />
+      <br /><strong>Dashboard</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-concerts.png" alt="TicketBox concert management workspace" />
+      <br /><strong>Concerts</strong>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-checkers-gates.png" alt="TicketBox checker accounts and gate assignments" />
+      <br /><strong>Checkers &amp; Gates</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-vip-guests.png" alt="TicketBox VIP guest import and directory" />
+      <br /><strong>VIP Guests</strong>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-checkins.png" alt="TicketBox check-in statistics and conflicts" />
+      <br /><strong>Check-ins</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/admin-refunds.png" alt="TicketBox refund queue" />
+      <br /><strong>Refunds</strong>
+    </td>
+  </tr>
+</table>
+
+### Gate checker
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/checker-scan.png" alt="TicketBox checker scan workspace" width="390" />
+      <br /><strong>Live camera scan frame</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/checker-vip.png" alt="TicketBox checker VIP guest list" width="390" />
+      <br /><strong>VIP guest entry</strong>
+    </td>
+  </tr>
+</table>
+
+## Capabilities
+
+| Surface | Main capabilities |
+| --- | --- |
+| Audience web | Browse published concerts, inspect zones and availability, join sale queues, purchase tickets, track payment, and open QR e-tickets. |
+| Organizer admin | Manage concerts and inventory, checker accounts and gates, VIP imports, check-in conflicts, artist bios, and refund queues. |
+| Checker app | Select an event, cache assignments and verification keys, scan signed QR tickets, reject gate mismatches and local duplicates, sync offline check-ins, and admit VIP guests. |
+| Platform services | Authentication, Redis-backed sale queues, idempotent purchase/payment handling, notifications, signed QR issuance, and audit history. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients["Client applications"]
+    Audience["Audience browser"]
+    Organizer["Organizer browser"]
+    Checker["Expo checker app"]
+    Local["SQLite + SecureStore<br/>offline cache"]
+  end
+
+  Proxy["Nginx reverse proxy<br/>:8088"]
+  Web["Next.js 15<br/>audience + admin"]
+  API["Spring Boot 4 API"]
+
+  subgraph Data["Data and infrastructure"]
+    Postgres["PostgreSQL 17"]
+    Redis["Redis 8"]
+    Mail["SMTP / Mailpit"]
+    Files["VIP imports + PDF storage"]
+  end
+
+  subgraph External["External integrations"]
+    Payment["VNPay / MoMo"]
+    AI["NVIDIA AI endpoint"]
+  end
+
+  Audience --> Proxy
+  Organizer --> Proxy
+  Checker --> Proxy
+  Checker <--> Local
+  Proxy -->|"Page requests"| Web
+  Proxy -->|"/api/*"| API
+  Web -->|"Server-side API calls"| API
+  API --> Postgres
+  API --> Redis
+  API --> Mail
+  API --> Files
+  API --> Payment
+  API --> AI
 ```
 
-The public web app is served through Nginx at `http://localhost:8088`. The API is available through the same reverse proxy at `http://localhost:8088/api/**`; direct API and web service ports are also exposed at `http://localhost:8080` and `http://localhost:3000` for debugging.
+### Offline check-in path
 
-If `8088` is already allocated, run with an alternate reverse-proxy port:
+1. The checker signs in online and caches its event assignment, accepted zones,
+   and public verification keys. Local scan history remains on the device.
+2. Every QR JWT is verified locally for signature, event, zone, expiry, and
+   duplicate use already seen on that device before admission.
+3. Offline admissions are stored in SQLite and shown immediately in the app.
+4. When connectivity returns, queued check-ins sync idempotently with the API.
+   The server resolves cross-device duplicates and keeps conflicts visible for
+   gate staff and organizer review.
 
-```sh
-NGINX_PORT=18088 docker compose up --build
+## Repository Layout
+
+```text
+ticket-box/
+|-- api/                 Spring Boot API and Flyway migrations
+|-- ticketbox-web/       Next.js audience and organizer interfaces
+|-- ticketbox-checker/   Expo / React Native gate checker
+|-- import-samples/      Repeatable VIP and artist-bio samples
+|-- nginx/               Reverse-proxy configuration
+|-- scripts/             App launcher
+|-- docker-compose.yml   Local platform stack
+`-- README.md            Setup, architecture, and product guide
 ```
 
-Flyway runs automatically when the API starts. The seed migrations create demo users, four published concerts, ticket types, seat maps, and published artist bios. A repeatable VIP CSV sample is stored in `import-samples/vip-guests-sample.csv`.
+## Quick Start
 
-## AI Artist Bio
+### Requirements
 
-Live AI bio generation uses NVIDIA's OpenAI-compatible endpoint. Set `NVIDIA_API_KEY` in your local `.env` before uploading a press-kit PDF from the organizer dashboard. Keep `.env` local-only and never commit API keys.
+- Docker Desktop with Compose, or Docker Engine inside WSL 2.
+- Node.js 22 or newer with Corepack.
+- Android Studio and an Android Virtual Device for the checker app.
 
-Runtime knobs:
+### First-time setup
 
-- `NVIDIA_API_KEY`: required for live generation.
-- `NVIDIA_BASE_URL`: NVIDIA OpenAI-compatible base URL, default `https://integrate.api.nvidia.com/v1`.
-- `NVIDIA_MODEL`: NVIDIA model name, default `meta/llama-3.1-8b-instruct`.
-- `NVIDIA_REQUEST_TIMEOUT`: outbound NVIDIA request timeout, default `30s`.
-- `ARTIST_PDF_STORAGE_DIR`: local PDF storage path, default `./storage/artist-pdfs`.
-- `ARTIST_PDF_MAX_BYTES`: upload size limit in bytes, default `20971520` (20MB).
-- `ARTIST_PDF_MAX_PAGES`: page limit, default `20`.
-- `ARTIST_PDF_MAX_EXTRACTED_CHARS`: extracted text cap, default `40000`.
-- `ARTIST_BIO_MAX_PROMPT_CHARS`: prompt text cap, default `20000`.
-- `ARTIST_PDF_EXTRACTION_TIMEOUT`: PDF text extraction timeout, default `10s`.
+Open PowerShell in the repository root:
 
-Use `import-samples/artist-press-kit-sample.pdf` for a small text-based demo upload. The file contains selectable text so the extraction path can produce source content for NVIDIA.
+```powershell
+Copy-Item .env.example .env
+Copy-Item ticketbox-checker\.env.example ticketbox-checker\.env
+corepack pnpm install
+```
 
-If the API restarts while a bio is still `GENERATING`, the scheduled reaper marks it `FAILED` with `Generation interrupted - please retry` so organizers can safely upload again. Regeneration throttling is currently in-memory and intended for the single-instance local/demo stack; use a database-backed guard before running multiple API instances.
+### Start the web platform
 
-## Seed Accounts
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -Target platform
+```
+
+The launcher uses Docker from Windows when available and otherwise falls back
+to Docker Engine in the default WSL distribution. In WSL mode it keeps the
+distribution alive while the containers run; `-Target stop` releases it.
+
+### Start the checker
+
+Start an Android Virtual Device, then run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -Target checker
+```
+
+To start the platform first and then open the checker:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -Target all
+```
+
+Use `-NoBuild` when the Docker images are already current:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -Target platform -NoBuild
+```
+
+## Local URLs
+
+| Service | URL |
+| --- | --- |
+| Audience web | `http://localhost:8088` |
+| Organizer admin | `http://localhost:8088/admin/login` |
+| API health | `http://localhost:8088/api/health` |
+| Mailpit | `http://localhost:8025` |
+| Direct API | `http://localhost:8080` |
+| Direct Next.js app | `http://localhost:3000` |
+
+Stop the stack through the same launcher:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -Target stop
+```
+
+## Demo Accounts
 
 All seeded accounts use password `password`.
 
 | Role | Email |
 | --- | --- |
-| ORGANIZER | `organizer@ticketbox.vn` |
-| CHECKER | `checker1@ticketbox.vn` |
-| CHECKER | `checker2@ticketbox.vn` |
-| AUDIENCE | `audience1@ticketbox.vn` |
-| AUDIENCE | `audience2@ticketbox.vn` |
-| AUDIENCE | `audience3@ticketbox.vn` |
+| Organizer | `organizer@ticketbox.vn` |
+| Checker | `checker1@ticketbox.vn` |
+| Checker | `checker2@ticketbox.vn` |
+| Audience | `audience1@ticketbox.vn` |
+| Audience | `audience2@ticketbox.vn` |
+| Audience | `audience3@ticketbox.vn` |
 
-Seed event codes are `ATSH-HCM-2026`, `ATVNCG-HN-2026`, `EXSH-HCM-2026`, and `CDDG-HN-2026`. Each concert has GA, CAT2, CAT1, VIP, and SVIP ticket types.
+## Checker Connectivity
 
-## API Overview
+Keep the following value in `ticketbox-checker/.env`:
 
-| Area | Routes |
-| --- | --- |
-| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh` |
-| Public concerts | `GET /api/concerts`, `GET /api/concerts/{id}`, `GET /api/concerts/{id}/availability` |
-| Organizer admin | `/api/admin/concerts/**`, `/api/admin/orders/**`, `/api/admin/checkers/**`, `/api/admin/vip-imports` |
-| Queue and purchase | `POST /api/queue/{concertId}/enter`, `GET /api/queue/{concertId}/status`, `POST /api/tickets/purchase` |
-| Payments | `GET /api/payments/vnpay/callback`, `GET /api/payments/vnpay/ipn`, `POST /api/payments/momo/callback` |
-| Orders and tickets | `GET /api/orders/{id}`, `GET /api/orders/{id}/tickets` |
-| Checker | `GET /api/checker/key-bundle`, `GET /api/checker/assignments`, `POST /api/checker/assignment-audit` |
-| Check-in and VIP gate | `POST /api/checkins/{ticketId}`, `POST /api/checkins/batch`, `GET /api/vip-guests`, `POST /api/vip-guests/{id}/enter` |
-
-Public concert responses expose only published bio text. Draft bio and processing error fields stay behind organizer review routes.
-
-## Verification
-
-Backend tests in Docker/WSL:
-
-```sh
-wsl docker run --rm -v "/mnt/d/hcmus-sixth-semester-practice/Software Design/Final Project/ticket-box/api:/workspace" -w /workspace gradle:9-jdk25-alpine gradle --no-daemon --project-cache-dir /tmp/ticketbox-gradle-cache test
+```dotenv
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8088
 ```
 
-Frontend build:
-
-```sh
-wsl docker build -f ticketbox-web/Dockerfile -t ticketbox-web-final-check .
-```
-
-Compose build and runtime smoke:
-
-```sh
-wsl docker compose build api web
-NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
-```
-
-The default runtime smoke does not call the AI provider. To include the AI bio lifecycle (`upload -> DRAFT -> public hidden -> publish -> public visible`), set `NVIDIA_API_KEY` in local `.env` and run:
-
-```sh
-AI_BIO_SMOKE=true NGINX_PORT=18088 LOAD_USERS=20 sh scripts/verify-runtime-stack.sh
-```
-
-This AI smoke uses the real NVIDIA service, so it requires outbound network access from the API container and available provider quota. Increase `AI_BIO_SMOKE_TIMEOUT_MS` if generation is slow.
-
-Queue/load simulation against a running stack:
-
-```sh
-LOAD_USERS=500 node scripts/load-purchase-queue.mjs
-```
-
-OpenSpec validation:
-
-```sh
-openspec validate ticketbox-platform --strict
-```
-
-The detailed lifecycle coverage lives in the backend integration tests:
-
-- `TicketPurchaseIntegrationTest`: purchase idempotency, payment callbacks, expiry, refund-required late success, refund marking, inventory release, notification outbox.
-- `QueueAdmissionIntegrationTest`: FIFO queue admission, admission-token enforcement, expiry, and rate bounds.
-- `CheckinIntegrationTest`: checker assignments, local/offline replay semantics, duplicate conflicts, gate/zone enforcement, emergency audit, organizer conflict visibility, and VIP gate entry.
-- `ArtistBioIntegrationTest`: PDF validation, AI provider mock handling, draft/public bio boundaries, failure storage, stale generation handling, and cache invalidation.
-- `VipGuestImportServiceTest`: unknown event codes, partial row failure, duplicate/import idempotency, scoped deactivation, content-hash skip, archive movement, and entered preservation.
+The checker maps `localhost` to Android emulator host address `10.0.2.2`.
+Restart Expo after changing any `EXPO_PUBLIC_*` variable.

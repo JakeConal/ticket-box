@@ -150,6 +150,8 @@ latest-valid-jwt.txt
 imports/
 temp/
 tmp/
+.tmp/
+~$*.docx
 *.sqlite
 *.sqlite3
 *.db
