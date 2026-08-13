@@ -80,8 +80,6 @@ pipeline {
     GITHUB_CREDENTIALS_ID = 'github-ticketbox'
     CHECK_CONTEXT = 'jenkins/ticketbox-web'
     MODULE_CHANGED = 'true'
-    DOCKER_BUILDKIT = '1'
-    COMPOSE_DOCKER_CLI_BUILD = '1'
   }
 
   stages {

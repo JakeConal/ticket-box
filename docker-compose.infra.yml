@@ -12,8 +12,6 @@ services:
       - "${JENKINS_AGENT_PORT:-50000}:50000"
     environment:
       JENKINS_OPTS: "--prefix=/"
-      DOCKER_BUILDKIT: "1"
-      COMPOSE_DOCKER_CLI_BUILD: "1"
       TICKETBOX_APP_COMPOSE_PROJECT: "${TICKETBOX_APP_COMPOSE_PROJECT:-ticketbox}"
     volumes:
       - jenkins-home:/var/jenkins_home
