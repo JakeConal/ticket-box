@@ -108,6 +108,13 @@ Jenkins data is stored in the `ticketbox-infra_jenkins-home` Docker volume.
 The Jenkins container mounts `/var/run/docker.sock`, so Jenkins can run Docker
 and Docker Compose commands against the WSL Docker Engine.
 
+The custom Jenkins image installs Docker Buildx and enables BuildKit. Rebuild
+the Jenkins service after Docker CLI changes:
+
+```bash
+docker compose --env-file .env.infras -f docker-compose.infra.yml up -d --build jenkins
+```
+
 Use a stable app project name when deploying the app stack:
 
 ```bash
