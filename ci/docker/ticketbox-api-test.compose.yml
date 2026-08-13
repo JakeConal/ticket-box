@@ -1,0 +1,22 @@
+name: ticketbox-api-ci
+
+services:
+  api-test:
+    build:
+      context: ../../api
+      dockerfile: Dockerfile.ci
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      TEST_REDIS_HOST: redis
+      TEST_REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

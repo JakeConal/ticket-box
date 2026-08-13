@@ -1,0 +1,95 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  parameters {
+    string(name: 'DOCKER_IMAGE_NAMESPACE', defaultValue: 'your-dockerhub-username', description: 'Docker Hub namespace or organization that owns the TicketBox repositories.', trim: true)
+    string(name: 'DOCKER_CREDENTIALS_ID', defaultValue: 'dockerhub-ticketbox', description: 'Jenkins username/password credential ID for Docker Hub.', trim: true)
+  }
+
+  environment {
+    WEB_IMAGE = 'ticketbox-web:ci'
+    DOCKER_REGISTRY = 'docker.io'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh '''
+          docker build \
+            --target test \
+            -t "$WEB_IMAGE-test" \
+            -f ci/docker/ticketbox-web.Dockerfile \
+            .
+        '''
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh '''
+          docker build \
+            --target build \
+            -t "$WEB_IMAGE-build" \
+            -f ci/docker/ticketbox-web.Dockerfile \
+            .
+
+          docker build \
+            -t "$WEB_IMAGE" \
+            -f ticketbox-web/Dockerfile \
+            .
+        '''
+      }
+    }
+
+    stage('Publish Image') {
+      when {
+        expression { return env.CHANGE_ID == null }
+      }
+      steps {
+        script {
+          if (params.DOCKER_IMAGE_NAMESPACE == 'your-dockerhub-username') {
+            error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
+          }
+
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_.-]/, '-').toLowerCase()
+          def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
+          def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-web"
+          def versionTag = "${safeBranch}-${shortSha}"
+
+          withCredentials([usernamePassword(
+            credentialsId: params.DOCKER_CREDENTIALS_ID,
+            usernameVariable: 'DOCKER_USERNAME',
+            passwordVariable: 'DOCKER_PASSWORD'
+          )]) {
+            sh """
+              set +x
+              echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
+              set -x
+
+              docker tag "$WEB_IMAGE" "${remoteImage}:${versionTag}"
+              docker push "${remoteImage}:${versionTag}"
+
+              if [ "${env.BRANCH_NAME}" = "main" ]; then
+                docker tag "$WEB_IMAGE" "${remoteImage}:latest"
+                docker push "${remoteImage}:latest"
+              fi
+
+              docker logout "${env.DOCKER_REGISTRY}"
+            """
+          }
+        }
+      }
+    }
+  }
+}

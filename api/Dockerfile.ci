@@ -1,0 +1,5 @@
+FROM gradle:9-jdk25-alpine AS test
+WORKDIR /workspace
+COPY settings.gradle build.gradle ./
+COPY src ./src
+CMD ["gradle", "--no-daemon", "test"]

@@ -1,0 +1,102 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  parameters {
+    string(name: 'DOCKER_IMAGE_NAMESPACE', defaultValue: 'your-dockerhub-username', description: 'Docker Hub namespace or organization that owns the TicketBox repositories.', trim: true)
+    string(name: 'DOCKER_CREDENTIALS_ID', defaultValue: 'dockerhub-ticketbox', description: 'Jenkins username/password credential ID for Docker Hub.', trim: true)
+  }
+
+  environment {
+    API_IMAGE = 'ticketbox-api:ci'
+    DOCKER_REGISTRY = 'docker.io'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh '''
+          docker compose \
+            -f ci/docker/ticketbox-api-test.compose.yml \
+            up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from api-test \
+            api-test
+        '''
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh '''
+          docker build \
+            -t "$API_IMAGE" \
+            ./api
+        '''
+      }
+    }
+
+    stage('Publish Image') {
+      when {
+        expression { return env.CHANGE_ID == null }
+      }
+      steps {
+        script {
+          if (params.DOCKER_IMAGE_NAMESPACE == 'your-dockerhub-username') {
+            error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
+          }
+
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_.-]/, '-').toLowerCase()
+          def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
+          def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-api"
+          def versionTag = "${safeBranch}-${shortSha}"
+
+          withCredentials([usernamePassword(
+            credentialsId: params.DOCKER_CREDENTIALS_ID,
+            usernameVariable: 'DOCKER_USERNAME',
+            passwordVariable: 'DOCKER_PASSWORD'
+          )]) {
+            sh """
+              set +x
+              echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
+              set -x
+
+              docker tag "$API_IMAGE" "${remoteImage}:${versionTag}"
+              docker push "${remoteImage}:${versionTag}"
+
+              if [ "${env.BRANCH_NAME}" = "main" ]; then
+                docker tag "$API_IMAGE" "${remoteImage}:latest"
+                docker push "${remoteImage}:latest"
+              fi
+
+              docker logout "${env.DOCKER_REGISTRY}"
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh '''
+        docker compose \
+          -f ci/docker/ticketbox-api-test.compose.yml \
+          down \
+          --volumes \
+          --remove-orphans || true
+      '''
+    }
+  }
+}
