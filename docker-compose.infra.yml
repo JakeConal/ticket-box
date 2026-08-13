@@ -19,6 +19,45 @@ services:
     networks:
       - infra
 
+  sonarqube:
+    image: sonarqube:26.8.0.126808-community
+    container_name: ticketbox-sonarqube
+    restart: unless-stopped
+    stop_grace_period: 1h
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/${SONARQUBE_DB_NAME:-sonarqube}
+      SONAR_JDBC_USERNAME: ${SONARQUBE_DB_USER:-sonarqube}
+      SONAR_JDBC_PASSWORD: ${SONARQUBE_DB_PASSWORD:-sonarqube}
+    ports:
+      - "${SONARQUBE_HTTP_PORT:-9000}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    networks:
+      - infra
+
+  sonarqube-db:
+    image: postgres:17-alpine
+    container_name: ticketbox-sonarqube-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SONARQUBE_DB_NAME:-sonarqube}
+      POSTGRES_USER: ${SONARQUBE_DB_USER:-sonarqube}
+      POSTGRES_PASSWORD: ${SONARQUBE_DB_PASSWORD:-sonarqube}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SONARQUBE_DB_USER:-sonarqube} -d ${SONARQUBE_DB_NAME:-sonarqube}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - sonarqube-db-data:/var/lib/postgresql/data
+    networks:
+      - infra
+
   mailpit:
     image: axllent/mailpit:v1.22
     container_name: ticketbox-mailpit
@@ -56,6 +95,10 @@ services:
 
 volumes:
   jenkins-home:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:
+  sonarqube-db-data:
 
 networks:
   infra:

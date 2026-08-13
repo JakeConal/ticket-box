@@ -79,6 +79,9 @@ pipeline {
     GITHUB_REPO = 'JakeConal/ticket-box'
     GITHUB_CREDENTIALS_ID = 'github-ticketbox'
     CHECK_CONTEXT = 'jenkins/ticketbox-api'
+    SONAR_HOST_URL = 'http://sonarqube:9000'
+    SONAR_CREDENTIALS_ID = 'sonarqube-ticketbox'
+    SONAR_SCANNER_IMAGE = 'sonarsource/sonar-scanner-cli:12.1.0.3233_8.0.1'
     MODULE_CHANGED = 'true'
   }
 
@@ -122,6 +125,38 @@ pipeline {
             --exit-code-from api-test \
             api-test
         '''
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      when {
+        expression {
+          return env.MODULE_CHANGED == 'true' &&
+            env.CHANGE_ID == null &&
+            ['main', 'master'].contains(env.BRANCH_NAME)
+        }
+      }
+      steps {
+        withCredentials([string(credentialsId: env.SONAR_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
+          sh '''
+            api_project="ticketbox-api-ci-$LOCAL_IMAGE_TAG_SUFFIX"
+            rm -rf api/build
+            docker compose \
+              -p "$api_project" \
+              -f ci/docker/ticketbox-api-test.compose.yml \
+              cp api-test:/workspace/build ./api/
+
+            docker run --rm \
+              --network ticketbox-infra \
+              --volumes-from ticketbox-jenkins \
+              --workdir "$WORKSPACE/api" \
+              --env SONAR_HOST_URL \
+              --env SONAR_TOKEN \
+              "$SONAR_SCANNER_IMAGE" \
+              -Dsonar.qualitygate.wait=true \
+              -Dsonar.qualitygate.timeout=300
+          '''
+        }
       }
     }
 

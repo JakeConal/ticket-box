@@ -9,7 +9,7 @@ the matching pipeline file:
 | Web | `ci/jenkins/Jenkinsfile.web` |
 | Checker | `ci/jenkins/Jenkinsfile.checker` |
 
-Each pipeline includes test and build stages.
+Each pipeline includes test, SonarQube analysis, and build stages.
 Successful non-PR branch builds also publish Docker images.
 
 Each module pipeline checks the changed file list before running expensive
@@ -25,6 +25,11 @@ without overwriting the same local Docker tag.
 
 Jenkins must be able to run Docker commands. The infrastructure stack in
 `docker-compose.infra.yml` mounts the WSL Docker socket into Jenkins for this.
+
+Start the infrastructure stack, including SonarQube, by following
+`infra/README.md`. The pipelines run the pinned official SonarScanner image on
+the `ticketbox-infra` Docker network, so no scanner installation or Jenkins
+SonarQube plugin is required.
 
 Create a Jenkins credential for Docker Hub:
 
@@ -59,6 +64,38 @@ Metadata: Read-only
 Pull requests: Read-only
 Commit statuses: Read and write
 ```
+
+Create a SonarQube user token under:
+
+```text
+User menu -> My Account -> Security -> Generate Tokens
+```
+
+Store it in Jenkins as:
+
+```text
+Kind: Secret text
+ID: sonarqube-ticketbox
+Secret: the generated SonarQube token
+```
+
+The token owner must have permission to execute analysis and create the three
+projects on their first scan. The pipelines create/use these project keys:
+
+```text
+ticketbox-api
+ticketbox-web
+ticketbox-checker
+```
+
+Analysis waits up to five minutes for the SonarQube quality gate and fails the
+pipeline when the gate fails. API analysis also imports the JaCoCo XML report
+produced by its test container.
+
+SonarQube Community Build supports only main-branch analysis. Consequently,
+the SonarQube stage runs only for non-PR builds of `main` or `master`; other
+multibranch builds continue to run tests and builds without publishing an
+analysis that would overwrite the main-branch result.
 
 ## Suggested Jenkins Jobs
 
