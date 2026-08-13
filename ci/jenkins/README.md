@@ -17,6 +17,10 @@ steps. If a pull request or branch update does not touch that module, the job
 publishes a successful skipped status and does not run test, build, or image
 publish stages.
 
+Local CI image tags include the branch name and Jenkins build number. This lets
+branch, pull request head, and pull request merge builds run concurrently
+without overwriting the same local Docker tag.
+
 ## Requirements
 
 Jenkins must be able to run Docker commands. The infrastructure stack in

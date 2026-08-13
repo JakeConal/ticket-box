@@ -98,6 +98,8 @@ pipeline {
           ]).toString()
 
           if (env.MODULE_CHANGED == 'true') {
+            def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
+            env.LOCAL_IMAGE_TAG_SUFFIX = "${safeBranch}-${env.BUILD_NUMBER}"
             publishGithubStatus('pending', 'TicketBox Checker CI is running.')
           } else {
             publishGithubStatus('success', 'TicketBox Checker CI skipped; no Checker changes.')
@@ -115,7 +117,7 @@ pipeline {
         sh '''
           docker build \
             --target test \
-            -t "$CHECKER_IMAGE-test" \
+            -t "$CHECKER_IMAGE-test-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ci/docker/ticketbox-checker.Dockerfile \
             .
         '''
@@ -129,7 +131,7 @@ pipeline {
       steps {
         sh '''
           docker build \
-            -t "$CHECKER_IMAGE" \
+            -t "$CHECKER_IMAGE-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ci/docker/ticketbox-checker.Dockerfile \
             .
         '''
@@ -146,10 +148,11 @@ pipeline {
             error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
           }
 
-          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_.-]/, '-').toLowerCase()
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
           def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
           def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-checker"
           def versionTag = "${safeBranch}-${shortSha}"
+          def localImage = "${env.CHECKER_IMAGE}-${env.LOCAL_IMAGE_TAG_SUFFIX}"
 
           withCredentials([usernamePassword(
             credentialsId: params.DOCKER_CREDENTIALS_ID,
@@ -161,11 +164,11 @@ pipeline {
               echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
               set -x
 
-              docker tag "$CHECKER_IMAGE" "${remoteImage}:${versionTag}"
+              docker tag "${localImage}" "${remoteImage}:${versionTag}"
               docker push "${remoteImage}:${versionTag}"
 
               if [ "${env.BRANCH_NAME}" = "main" ]; then
-                docker tag "$CHECKER_IMAGE" "${remoteImage}:latest"
+                docker tag "${localImage}" "${remoteImage}:latest"
                 docker push "${remoteImage}:latest"
               fi
 

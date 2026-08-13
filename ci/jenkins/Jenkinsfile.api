@@ -95,6 +95,8 @@ pipeline {
           ]).toString()
 
           if (env.MODULE_CHANGED == 'true') {
+            def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
+            env.LOCAL_IMAGE_TAG_SUFFIX = "${safeBranch}-${env.BUILD_NUMBER}"
             publishGithubStatus('pending', 'TicketBox API CI is running.')
           } else {
             publishGithubStatus('success', 'TicketBox API CI skipped; no API changes.')
@@ -110,7 +112,9 @@ pipeline {
       }
       steps {
         sh '''
+          api_project="ticketbox-api-ci-$LOCAL_IMAGE_TAG_SUFFIX"
           docker compose \
+            -p "$api_project" \
             -f ci/docker/ticketbox-api-test.compose.yml \
             up \
             --build \
@@ -128,7 +132,7 @@ pipeline {
       steps {
         sh '''
           docker build \
-            -t "$API_IMAGE" \
+            -t "$API_IMAGE-$LOCAL_IMAGE_TAG_SUFFIX" \
             ./api
         '''
       }
@@ -144,10 +148,11 @@ pipeline {
             error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
           }
 
-          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_.-]/, '-').toLowerCase()
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
           def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
           def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-api"
           def versionTag = "${safeBranch}-${shortSha}"
+          def localImage = "${env.API_IMAGE}-${env.LOCAL_IMAGE_TAG_SUFFIX}"
 
           withCredentials([usernamePassword(
             credentialsId: params.DOCKER_CREDENTIALS_ID,
@@ -159,11 +164,11 @@ pipeline {
               echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
               set -x
 
-              docker tag "$API_IMAGE" "${remoteImage}:${versionTag}"
+              docker tag "${localImage}" "${remoteImage}:${versionTag}"
               docker push "${remoteImage}:${versionTag}"
 
               if [ "${env.BRANCH_NAME}" = "main" ]; then
-                docker tag "$API_IMAGE" "${remoteImage}:latest"
+                docker tag "${localImage}" "${remoteImage}:latest"
                 docker push "${remoteImage}:latest"
               fi
 
@@ -192,7 +197,13 @@ pipeline {
     }
     always {
       sh '''
+        if [ -n "$LOCAL_IMAGE_TAG_SUFFIX" ]; then
+          api_project="ticketbox-api-ci-$LOCAL_IMAGE_TAG_SUFFIX"
+        else
+          api_project="ticketbox-api-ci"
+        fi
         docker compose \
+          -p "$api_project" \
           -f ci/docker/ticketbox-api-test.compose.yml \
           down \
           --volumes \

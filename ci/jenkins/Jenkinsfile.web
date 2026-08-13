@@ -98,6 +98,8 @@ pipeline {
           ]).toString()
 
           if (env.MODULE_CHANGED == 'true') {
+            def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
+            env.LOCAL_IMAGE_TAG_SUFFIX = "${safeBranch}-${env.BUILD_NUMBER}"
             publishGithubStatus('pending', 'TicketBox Web CI is running.')
           } else {
             publishGithubStatus('success', 'TicketBox Web CI skipped; no Web changes.')
@@ -115,7 +117,7 @@ pipeline {
         sh '''
           docker build \
             --target test \
-            -t "$WEB_IMAGE-test" \
+            -t "$WEB_IMAGE-test-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ci/docker/ticketbox-web.Dockerfile \
             .
         '''
@@ -130,12 +132,12 @@ pipeline {
         sh '''
           docker build \
             --target build \
-            -t "$WEB_IMAGE-build" \
+            -t "$WEB_IMAGE-build-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ci/docker/ticketbox-web.Dockerfile \
             .
 
           docker build \
-            -t "$WEB_IMAGE" \
+            -t "$WEB_IMAGE-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ticketbox-web/Dockerfile \
             .
         '''
@@ -152,10 +154,11 @@ pipeline {
             error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
           }
 
-          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_.-]/, '-').toLowerCase()
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
           def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
           def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-web"
           def versionTag = "${safeBranch}-${shortSha}"
+          def localImage = "${env.WEB_IMAGE}-${env.LOCAL_IMAGE_TAG_SUFFIX}"
 
           withCredentials([usernamePassword(
             credentialsId: params.DOCKER_CREDENTIALS_ID,
@@ -167,11 +170,11 @@ pipeline {
               echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
               set -x
 
-              docker tag "$WEB_IMAGE" "${remoteImage}:${versionTag}"
+              docker tag "${localImage}" "${remoteImage}:${versionTag}"
               docker push "${remoteImage}:${versionTag}"
 
               if [ "${env.BRANCH_NAME}" = "main" ]; then
-                docker tag "$WEB_IMAGE" "${remoteImage}:latest"
+                docker tag "${localImage}" "${remoteImage}:latest"
                 docker push "${remoteImage}:latest"
               fi
 
