@@ -28,6 +28,38 @@ def publishGithubStatus(String state, String description) {
   }
 }
 
+def changedFilesForBuild() {
+  if (env.CHANGE_TARGET) {
+    sh "git fetch --no-tags origin +refs/heads/${env.CHANGE_TARGET}:refs/remotes/origin/${env.CHANGE_TARGET} || true"
+    return sh(
+      script: "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD",
+      returnStdout: true
+    ).trim().split('\n').findAll { it }
+  }
+
+  def baseCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: env.GIT_PREVIOUS_COMMIT
+  if (!baseCommit) {
+    return ['__first_build__']
+  }
+
+  return sh(
+    script: "git diff --name-only ${baseCommit} HEAD",
+    returnStdout: true
+  ).trim().split('\n').findAll { it }
+}
+
+def hasRelevantChanges(List changedFiles, List pathPrefixes) {
+  if (changedFiles.contains('__first_build__')) {
+    return true
+  }
+
+  return changedFiles.any { changedFile ->
+    pathPrefixes.any { prefix ->
+      changedFile == prefix || changedFile.startsWith("${prefix}/")
+    }
+  }
+}
+
 pipeline {
   agent any
 
@@ -47,6 +79,7 @@ pipeline {
     GITHUB_REPO = 'JakeConal/ticket-box'
     GITHUB_CREDENTIALS_ID = 'github-ticketbox'
     CHECK_CONTEXT = 'jenkins/ticketbox-checker'
+    MODULE_CHANGED = 'true'
   }
 
   stages {
@@ -54,12 +87,30 @@ pipeline {
       steps {
         checkout scm
         script {
-          publishGithubStatus('pending', 'TicketBox Checker CI is running.')
+          def changedFiles = changedFilesForBuild()
+          env.MODULE_CHANGED = hasRelevantChanges(changedFiles, [
+            'ticketbox-checker',
+            'package.json',
+            'pnpm-lock.yaml',
+            'pnpm-workspace.yaml',
+            'ci/docker/ticketbox-checker.Dockerfile',
+            'ci/jenkins/Jenkinsfile.checker'
+          ]).toString()
+
+          if (env.MODULE_CHANGED == 'true') {
+            publishGithubStatus('pending', 'TicketBox Checker CI is running.')
+          } else {
+            publishGithubStatus('success', 'TicketBox Checker CI skipped; no Checker changes.')
+            echo 'Skipping TicketBox Checker CI because no Checker files changed.'
+          }
         }
       }
     }
 
     stage('Test') {
+      when {
+        expression { return env.MODULE_CHANGED == 'true' }
+      }
       steps {
         sh '''
           docker build \
@@ -72,6 +123,9 @@ pipeline {
     }
 
     stage('Build') {
+      when {
+        expression { return env.MODULE_CHANGED == 'true' }
+      }
       steps {
         sh '''
           docker build \
@@ -84,7 +138,7 @@ pipeline {
 
     stage('Publish Image') {
       when {
-        expression { return env.CHANGE_ID == null }
+        expression { return env.CHANGE_ID == null && env.MODULE_CHANGED == 'true' }
       }
       steps {
         script {
@@ -126,12 +180,16 @@ pipeline {
   post {
     success {
       script {
-        publishGithubStatus('success', 'TicketBox Checker CI passed.')
+        if (env.MODULE_CHANGED == 'true') {
+          publishGithubStatus('success', 'TicketBox Checker CI passed.')
+        }
       }
     }
     unsuccessful {
       script {
-        publishGithubStatus('failure', 'TicketBox Checker CI failed.')
+        if (env.MODULE_CHANGED == 'true') {
+          publishGithubStatus('failure', 'TicketBox Checker CI failed.')
+        }
       }
     }
   }

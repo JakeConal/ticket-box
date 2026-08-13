@@ -12,6 +12,11 @@ the matching pipeline file:
 Each pipeline includes test and build stages.
 Successful non-PR branch builds also publish Docker images.
 
+Each module pipeline checks the changed file list before running expensive
+steps. If a pull request or branch update does not touch that module, the job
+publishes a successful skipped status and does not run test, build, or image
+publish stages.
+
 ## Requirements
 
 Jenkins must be able to run Docker commands. The infrastructure stack in
@@ -76,6 +81,38 @@ The web and checker Jenkinsfiles use Docker builds for module tests and builds.
 The API Jenkinsfile uses a CI-only Compose file so Spring tests can run with a
 Redis sidecar. This avoids mounting Jenkins workspaces into sibling containers,
 which is unreliable when Jenkins itself is running in Docker.
+
+## Module Change Filters
+
+The API pipeline runs when these paths change:
+
+```text
+api/**
+ci/docker/ticketbox-api-test.compose.yml
+ci/jenkins/Jenkinsfile.api
+```
+
+The web pipeline runs when these paths change:
+
+```text
+ticketbox-web/**
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+ci/docker/ticketbox-web.Dockerfile
+ci/jenkins/Jenkinsfile.web
+```
+
+The checker pipeline runs when these paths change:
+
+```text
+ticketbox-checker/**
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+ci/docker/ticketbox-checker.Dockerfile
+ci/jenkins/Jenkinsfile.checker
+```
 
 ## Published Images
 
