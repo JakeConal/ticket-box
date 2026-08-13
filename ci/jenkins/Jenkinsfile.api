@@ -1,0 +1,214 @@
+def publishGithubStatus(String state, String description) {
+  if (!env.GIT_COMMIT) {
+    echo 'Skipping GitHub status update because GIT_COMMIT is not available.'
+    return
+  }
+
+  withCredentials([usernamePassword(
+    credentialsId: env.GITHUB_CREDENTIALS_ID,
+    usernameVariable: 'GITHUB_USERNAME',
+    passwordVariable: 'GITHUB_TOKEN'
+  )]) {
+    withEnv([
+      "GITHUB_STATUS_STATE=${state}",
+      "GITHUB_STATUS_DESCRIPTION=${description}"
+    ]) {
+      sh '''
+        set +x
+        payload=$(printf '{"state":"%s","target_url":"%s","description":"%s","context":"%s"}' "$GITHUB_STATUS_STATE" "$BUILD_URL" "$GITHUB_STATUS_DESCRIPTION" "$CHECK_CONTEXT")
+        curl -fsS \
+          -u "$GITHUB_USERNAME:$GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          -d "$payload" \
+          "https://api.github.com/repos/$GITHUB_REPO/statuses/$GIT_COMMIT" \
+          >/dev/null
+      '''
+    }
+  }
+}
+
+def changedFilesForBuild() {
+  if (env.CHANGE_TARGET) {
+    sh "git fetch --no-tags origin +refs/heads/${env.CHANGE_TARGET}:refs/remotes/origin/${env.CHANGE_TARGET} || true"
+    return sh(
+      script: "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD",
+      returnStdout: true
+    ).trim().split('\n').findAll { it }
+  }
+
+  def baseCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: env.GIT_PREVIOUS_COMMIT
+  if (!baseCommit) {
+    return ['__first_build__']
+  }
+
+  return sh(
+    script: "git diff --name-only ${baseCommit} HEAD",
+    returnStdout: true
+  ).trim().split('\n').findAll { it }
+}
+
+def hasRelevantChanges(List changedFiles, List pathPrefixes) {
+  if (changedFiles.contains('__first_build__')) {
+    return true
+  }
+
+  return changedFiles.any { changedFile ->
+    pathPrefixes.any { prefix ->
+      changedFile == prefix || changedFile.startsWith("${prefix}/")
+    }
+  }
+}
+
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  parameters {
+    string(name: 'DOCKER_IMAGE_NAMESPACE', defaultValue: 'jakecoop17', description: 'Docker Hub namespace or organization that owns the TicketBox repositories.', trim: true)
+    string(name: 'DOCKER_CREDENTIALS_ID', defaultValue: 'dockerhub-ticketbox', description: 'Jenkins username/password credential ID for Docker Hub.', trim: true)
+  }
+
+  environment {
+    API_IMAGE = 'ticketbox-api:ci'
+    DOCKER_REGISTRY = 'docker.io'
+    GITHUB_REPO = 'JakeConal/ticket-box'
+    GITHUB_CREDENTIALS_ID = 'github-ticketbox'
+    CHECK_CONTEXT = 'jenkins/ticketbox-api'
+    MODULE_CHANGED = 'true'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          def changedFiles = changedFilesForBuild()
+          env.MODULE_CHANGED = hasRelevantChanges(changedFiles, [
+            'api',
+            'ci/docker/ticketbox-api-test.compose.yml',
+            'ci/jenkins/Jenkinsfile.api'
+          ]).toString()
+
+          if (env.MODULE_CHANGED == 'true') {
+            def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
+            env.LOCAL_IMAGE_TAG_SUFFIX = "${safeBranch}-${env.BUILD_NUMBER}"
+            publishGithubStatus('pending', 'TicketBox API CI is running.')
+          } else {
+            publishGithubStatus('success', 'TicketBox API CI skipped; no API changes.')
+            echo 'Skipping TicketBox API CI because no API files changed.'
+          }
+        }
+      }
+    }
+
+    stage('Test') {
+      when {
+        expression { return env.MODULE_CHANGED == 'true' }
+      }
+      steps {
+        sh '''
+          api_project="ticketbox-api-ci-$LOCAL_IMAGE_TAG_SUFFIX"
+          docker compose \
+            -p "$api_project" \
+            -f ci/docker/ticketbox-api-test.compose.yml \
+            up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from api-test \
+            api-test
+        '''
+      }
+    }
+
+    stage('Build') {
+      when {
+        expression { return env.MODULE_CHANGED == 'true' }
+      }
+      steps {
+        sh '''
+          docker build \
+            -t "$API_IMAGE-$LOCAL_IMAGE_TAG_SUFFIX" \
+            ./api
+        '''
+      }
+    }
+
+    stage('Publish Image') {
+      when {
+        expression { return env.CHANGE_ID == null && env.MODULE_CHANGED == 'true' }
+      }
+      steps {
+        script {
+          if (!params.DOCKER_IMAGE_NAMESPACE?.trim() || params.DOCKER_IMAGE_NAMESPACE == 'your-dockerhub-username') {
+            error('Set DOCKER_IMAGE_NAMESPACE to your Docker Hub namespace before publishing images.')
+          }
+
+          def safeBranch = env.BRANCH_NAME.replaceAll(/[^A-Za-z0-9_-]/, '-').toLowerCase()
+          def shortSha = (env.GIT_COMMIT ?: 'unknown').take(12)
+          def remoteImage = "${env.DOCKER_REGISTRY}/${params.DOCKER_IMAGE_NAMESPACE}/ticketbox-api"
+          def versionTag = "${safeBranch}-${shortSha}"
+          def localImage = "${env.API_IMAGE}-${env.LOCAL_IMAGE_TAG_SUFFIX}"
+
+          withCredentials([usernamePassword(
+            credentialsId: params.DOCKER_CREDENTIALS_ID,
+            usernameVariable: 'DOCKER_USERNAME',
+            passwordVariable: 'DOCKER_PASSWORD'
+          )]) {
+            sh """
+              set +x
+              echo "\$DOCKER_PASSWORD" | docker login "${env.DOCKER_REGISTRY}" --username "\$DOCKER_USERNAME" --password-stdin
+              set -x
+
+              docker tag "${localImage}" "${remoteImage}:${versionTag}"
+              docker push "${remoteImage}:${versionTag}"
+
+              if [ "${env.BRANCH_NAME}" = "main" ]; then
+                docker tag "${localImage}" "${remoteImage}:latest"
+                docker push "${remoteImage}:latest"
+              fi
+
+              docker logout "${env.DOCKER_REGISTRY}"
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      script {
+        if (env.MODULE_CHANGED == 'true') {
+          publishGithubStatus('success', 'TicketBox API CI passed.')
+        }
+      }
+    }
+    unsuccessful {
+      script {
+        if (env.MODULE_CHANGED == 'true') {
+          publishGithubStatus('failure', 'TicketBox API CI failed.')
+        }
+      }
+    }
+    always {
+      sh '''
+        if [ -n "$LOCAL_IMAGE_TAG_SUFFIX" ]; then
+          api_project="ticketbox-api-ci-$LOCAL_IMAGE_TAG_SUFFIX"
+        else
+          api_project="ticketbox-api-ci"
+        fi
+        docker compose \
+          -p "$api_project" \
+          -f ci/docker/ticketbox-api-test.compose.yml \
+          down \
+          --volumes \
+          --remove-orphans || true
+      '''
+    }
+  }
+}
