@@ -1,16 +1,19 @@
-FROM node:22-bullseye AS deps
+FROM node:22.21.1-bullseye AS deps
 WORKDIR /workspace
-COPY ticketbox-checker/package.json ticketbox-checker/package-lock.json ./
-RUN npm ci
+RUN chown node:node /workspace
+COPY --chown=node:node ticketbox-checker/package.json ticketbox-checker/package-lock.json ./
+USER node
+RUN npm ci --ignore-scripts
 
 FROM deps AS source
-COPY ticketbox-checker ./
+COPY --chown=node:node ticketbox-checker ./
 
 FROM source AS test
 RUN npm test
 
 FROM test AS build
-RUN npx expo export --platform web --output-dir dist
+RUN ./node_modules/.bin/expo export --platform web --output-dir dist
 
-FROM nginx:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.31.3-alpine
 COPY --from=build /workspace/dist /usr/share/nginx/html
+EXPOSE 8080
