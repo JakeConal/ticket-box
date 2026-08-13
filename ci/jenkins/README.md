@@ -92,10 +92,15 @@ Analysis waits up to five minutes for the SonarQube quality gate and fails the
 pipeline when the gate fails. API analysis also imports the JaCoCo XML report
 produced by its test container.
 
-SonarQube Community Build supports only main-branch analysis. Consequently,
-the SonarQube stage runs only for non-PR builds of `main` or `master`; other
-multibranch builds continue to run tests and builds without publishing an
-analysis that would overwrite the main-branch result.
+SonarQube Community Build supports only main-branch analysis. The pipelines
+therefore scan same-repository pull requests as isolated projects, using keys
+such as `ticketbox-api-pr-4`, so a PR cannot overwrite the main project.
+These scans enforce the quality gate against the complete PR snapshot; they do
+not provide native changed-code analysis or GitHub PR decoration. Fork pull
+requests remain excluded so untrusted code cannot access the SonarQube token.
+Delete obsolete `*-pr-*` projects from SonarQube after their pull requests are
+closed. Native pull request analysis and automatic cleanup require a SonarQube
+edition that supports multibranch analysis.
 
 ## Suggested Jenkins Jobs
 

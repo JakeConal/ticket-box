@@ -131,9 +131,9 @@ pipeline {
     stage('SonarQube Analysis') {
       when {
         expression {
-          return env.MODULE_CHANGED == 'true' &&
-            env.CHANGE_ID == null &&
-            ['main', 'master'].contains(env.BRANCH_NAME)
+          def isMainBranch = env.CHANGE_ID == null && ['main', 'master'].contains(env.BRANCH_NAME)
+          def isTrustedPullRequest = env.CHANGE_ID != null && !env.CHANGE_FORK
+          return env.MODULE_CHANGED == 'true' && (isMainBranch || isTrustedPullRequest)
         }
       }
       steps {
@@ -153,6 +153,7 @@ pipeline {
               --env SONAR_HOST_URL \
               --env SONAR_TOKEN \
               "$SONAR_SCANNER_IMAGE" \
+              -Dsonar.projectKey="ticketbox-api${CHANGE_ID:+-pr-$CHANGE_ID}" \
               -Dsonar.qualitygate.wait=true \
               -Dsonar.qualitygate.timeout=300
           '''
