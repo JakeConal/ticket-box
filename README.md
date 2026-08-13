@@ -155,6 +155,7 @@ Open PowerShell in the repository root:
 
 ```powershell
 Copy-Item .env.example .env
+Copy-Item .env.infras.example .env.infras
 Copy-Item ticketbox-checker\.env.example ticketbox-checker\.env
 corepack pnpm install
 ```

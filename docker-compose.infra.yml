@@ -30,6 +30,24 @@ services:
       - ticketbox
       - infra
 
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ticketbox-ngrok
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    command:
+      - http
+      - jenkins:8080
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      - jenkins
+    ports:
+      - "${NGROK_INSPECT_PORT:-4040}:4040"
+    networks:
+      - infra
+
   # Future observability services can live in this same stack, for example:
   # prometheus:
   # grafana:
