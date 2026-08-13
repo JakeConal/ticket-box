@@ -33,6 +33,24 @@ DOCKER_IMAGE_NAMESPACE: your Docker Hub namespace or organization
 DOCKER_CREDENTIALS_ID: dockerhub-ticketbox
 ```
 
+Create a Jenkins credential for GitHub status publishing:
+
+```text
+Kind: Username with password
+ID: github-ticketbox
+Username: your GitHub username
+Password: a GitHub personal access token
+```
+
+The GitHub token needs:
+
+```text
+Contents: Read-only
+Metadata: Read-only
+Pull requests: Read-only
+Commit statuses: Read and write
+```
+
 ## Suggested Jenkins Jobs
 
 - `ticketbox-api`
@@ -79,3 +97,16 @@ docker.io/<namespace>/ticketbox-checker:latest
 
 Pull request builds do not push images. This avoids publishing untrusted code
 and keeps fork PRs away from Docker registry credentials.
+
+## Published GitHub Checks
+
+Each module pipeline publishes an explicit GitHub commit status:
+
+```text
+jenkins/ticketbox-api
+jenkins/ticketbox-web
+jenkins/ticketbox-checker
+```
+
+After each context appears on a pull request once, add those three checks to
+the GitHub branch protection rule.
