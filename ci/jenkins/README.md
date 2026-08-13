@@ -34,7 +34,7 @@ Password: a Docker Hub access token
 Each Jenkinsfile exposes these parameters:
 
 ```text
-DOCKER_IMAGE_NAMESPACE: your Docker Hub namespace or organization
+DOCKER_IMAGE_NAMESPACE: jakecoop17
 DOCKER_CREDENTIALS_ID: dockerhub-ticketbox
 ```
 
