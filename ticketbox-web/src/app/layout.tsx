@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
+import { Outfit } from "next/font/google";
 import "./globals.css";
-import { MusicBackdrop } from "../components/music-backdrop";
+import { BauhausBackdrop } from "../components/bauhaus-backdrop";
 import { NotificationListener } from "../components/notification-listener";
 import { PageTransition } from "../components/page-transition";
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  weight: ["400", "500", "700", "900"],
+  display: "swap"
+});
 
 export const metadata: Metadata = {
   title: "TicketBox",
@@ -16,8 +23,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-w-80 bg-white font-sans text-neutral-950 antialiased">
-        <MusicBackdrop />
+      <body className={`${outfit.className} min-w-80 bg-canvas font-sans text-ink antialiased`}>
+        <BauhausBackdrop />
         <NotificationListener />
         <div className="relative z-10">
           <PageTransition>{children}</PageTransition>

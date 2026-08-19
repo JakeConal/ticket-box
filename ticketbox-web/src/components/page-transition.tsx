@@ -102,47 +102,40 @@ export function PageTransition({ children }: { children: ReactNode }) {
 
   return (
     <div>
-      <ScoreSheetTransition phase={phase} />
+      <BauhausSheetTransition phase={phase} />
       {children}
     </div>
   );
 }
 
-function ScoreSheetTransition({ phase }: { phase: TransitionPhase }) {
+// Full-screen yellow sheet with primary shapes sweeps across on navigation.
+function BauhausSheetTransition({ phase }: { phase: TransitionPhase }) {
   if (phase === "idle") {
     return null;
   }
 
-  const animation = phase === "cover" ? "motion-safe:animate-score-sheet-cover" : "motion-safe:animate-score-sheet-reveal";
+  const animation = phase === "cover" ? "motion-safe:animate-bauhaus-cover" : "motion-safe:animate-bauhaus-reveal";
 
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-50 overflow-hidden motion-reduce:hidden">
-      <div className={`${animation} absolute -inset-y-[12%] -left-[12%] w-[124%] bg-neutral-50 shadow-[0_0_0_1px_rgb(23_23_23)]`}>
-        <ScoreRibbon />
+      <div className={`${animation} absolute -inset-y-[12%] -left-[12%] w-[124%] border-y-4 border-ink bg-bauhaus-yellow`}>
+        <BauhausRibbon />
       </div>
     </div>
   );
 }
 
-function ScoreRibbon() {
+function BauhausRibbon() {
   return (
-    <div className="relative h-full w-full overflow-hidden text-neutral-950">
-      <StaffRow className="top-[16%] -rotate-2" />
-      <StaffRow className="top-[43%] rotate-1" />
-      <StaffRow className="top-[70%] -rotate-1" />
-
-      <span className="absolute left-[15%] top-[18%] text-7xl leading-none motion-safe:animate-score-note-flow [animation-delay:30ms] sm:text-9xl">♪</span>
-      <span className="absolute left-[42%] top-[38%] text-8xl leading-none motion-safe:animate-score-note-flow [animation-delay:90ms] sm:text-[7rem]">♫</span>
-      <span className="absolute left-[66%] top-[61%] text-7xl leading-none motion-safe:animate-score-note-flow [animation-delay:150ms] sm:text-9xl">♩</span>
-      <span className="absolute left-[84%] top-[23%] text-6xl leading-none motion-safe:animate-score-note-flow [animation-delay:210ms] sm:text-8xl">♪</span>
+    <div className="relative h-full w-full overflow-hidden">
+      <span className="absolute left-[12%] top-[18%] h-24 w-24 rounded-full border-4 border-ink bg-bauhaus-red motion-safe:animate-bauhaus-shape-in [animation-delay:30ms] sm:h-36 sm:w-36" />
+      <span className="absolute left-[42%] top-[40%] h-20 w-20 rotate-45 border-4 border-ink bg-bauhaus-blue motion-safe:animate-bauhaus-shape-in [animation-delay:90ms] sm:h-32 sm:w-32" />
+      <span
+        className="absolute left-[68%] top-[58%] h-24 w-24 bg-ink motion-safe:animate-bauhaus-shape-in [animation-delay:150ms] sm:h-32 sm:w-32"
+        style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}
+      />
+      <span className="absolute left-[86%] top-[16%] h-16 w-16 rounded-full border-4 border-ink bg-white motion-safe:animate-bauhaus-shape-in [animation-delay:210ms] sm:h-24 sm:w-24" />
     </div>
   );
 }
 
-function StaffRow({ className }: { className: string }) {
-  return (
-    <div className={`absolute -left-[8%] grid w-[116%] gap-3 motion-safe:animate-score-staff-flow ${className}`}>
-      {[0, 1, 2, 3, 4].map((line) => <span className="h-px w-full bg-current" key={line} />)}
-    </div>
-  );
-}

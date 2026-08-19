@@ -120,18 +120,18 @@ export function NotificationListener() {
   }
 
   return (
-    <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-2rem))] border border-neutral-950 bg-white p-4 shadow-[6px_6px_0_#171717]" role="status">
+    <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-2rem))] border-4 border-ink bg-bauhaus-yellow p-4 shadow-[8px_8px_0px_0px_#121212]" role="status">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-black text-neutral-950">{toast.title}</p>
-          {toast.body ? <p className="mt-1 text-sm leading-6 text-neutral-700">{toast.body}</p> : null}
-          <Link className="mt-3 inline-flex text-sm font-semibold text-neutral-950 underline" href={toast.deepLink}>
+          <p className="text-sm font-black uppercase tracking-wide text-ink">{toast.title}</p>
+          {toast.body ? <p className="mt-1 text-sm leading-6 text-ink/80">{toast.body}</p> : null}
+          <Link className="mt-3 inline-flex text-sm font-bold uppercase tracking-wider text-ink underline" href={toast.deepLink}>
             Open details
           </Link>
         </div>
         <button
           aria-label="Dismiss notification"
-          className="text-lg font-black leading-none text-neutral-500 hover:text-neutral-950"
+          className="text-lg font-black leading-none text-ink/50 hover:text-ink"
           type="button"
           onClick={() => setToast(null)}
         >

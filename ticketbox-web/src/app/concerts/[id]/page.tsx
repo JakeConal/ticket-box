@@ -20,6 +20,7 @@ import {
   purchaseTickets
 } from "../../../lib/audience-api";
 import { ui } from "../../../components/ui";
+import { BauhausLogo, Shape } from "../../../components/bauhaus";
 
 const PAYMENT_PROVIDER = "VNPAY" as const;
 const PURCHASE_ATTEMPT_TTL_MS = 15 * 60 * 1000;
@@ -292,48 +293,52 @@ export default function ConcertDetailPage() {
   return (
     <main className={ui.page}>
       <nav className={ui.nav} aria-label="Audience navigation">
-        <Link className={ui.brand} href="/">TicketBox</Link>
+        <Link className={ui.brand} href="/">
+          <BauhausLogo />
+          TicketBox
+        </Link>
         <div className={ui.navActions}>
           <Link className={`${ui.ghostButton} ${ui.compactButton}`} href="/me/tickets">My tickets</Link>
-          {session ? <span className="hidden max-w-48 truncate text-sm text-neutral-600 sm:inline">{session.email}</span> : <Link className={`${ui.primaryButton} ${ui.compactButton}`} href="/login">Login</Link>}
+          {session ? <span className="hidden max-w-48 truncate text-sm font-medium text-ink/70 sm:inline">{session.email}</span> : <Link className={`${ui.primaryButton} ${ui.compactButton}`} href="/login">Login</Link>}
         </div>
       </nav>
 
       {error ? <p className={ui.alertError} role="alert">{error}</p> : null}
 
-      <section className="grid gap-6 border-b border-neutral-950 pb-8 lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-end">
+      <section className="grid gap-6 border-b-4 border-ink pb-10 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-end">
         <div className="max-w-3xl">
           <p className={ui.eyebrow}>{concert.eventCode}</p>
-          <h1 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">{concert.name}</h1>
-          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-neutral-700">
+          <h1 className="mt-3 text-4xl font-black uppercase leading-[0.95] tracking-tighter sm:text-5xl">{concert.name}</h1>
+          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold uppercase tracking-wider text-ink/80">
             <span>{formatDate(concert.eventDate)}</span>
             <span>{concert.venue}</span>
           </div>
-          <p className={`${ui.muted} mt-4 max-w-2xl`}>Choose a zone, join the waiting room if demand spikes, then continue to a supported payment provider.</p>
+          <p className={`${ui.muted} mt-4 max-w-2xl text-base`}>Choose a zone, join the waiting room if demand spikes, then continue to a supported payment provider.</p>
         </div>
-        <div className="border border-neutral-950 p-5">
+        <div className="relative border-4 border-ink bg-bauhaus-yellow p-5 shadow-[6px_6px_0px_0px_#121212]">
+          <Shape className="absolute right-3 top-3 h-2.5 w-2.5" color="red" kind="circle" />
           <strong className="block text-4xl font-black">{availability.reduce((sum, item) => sum + item.remainingQuantity, 0)}</strong>
-          <span className="mt-2 block text-xs font-semibold uppercase tracking-[0.1em] text-neutral-600">tickets visible now</span>
+          <span className="mt-2 block text-xs font-bold uppercase tracking-widest text-ink/70">tickets visible now</span>
         </div>
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <article className={`${ui.panel} lg:col-span-2`}>
-          <h2 className="text-2xl font-bold">Seat map</h2>
-          <div className="mt-5 overflow-hidden border border-neutral-300 bg-white grayscale [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: concert.seatMapSvg || "" }} />
+          <h2 className="text-2xl font-black uppercase tracking-tight">Seat map</h2>
+          <div className="mt-5 overflow-hidden border-2 border-ink bg-white [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: concert.seatMapSvg || "" }} />
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             {concert.ticketTypes.map((ticket) => {
               const live = availabilityByTicket.get(ticket.id);
               const isSoldOut = live?.soldOut ?? ticket.remainingQuantity <= 0;
               return (
                 <button
-                  className={ticket.id === selectedTicketId ? "flex min-h-20 flex-col justify-center border border-neutral-950 bg-neutral-950 px-4 py-3 text-left text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-20 flex-col justify-center border border-neutral-400 bg-white px-4 py-3 text-left text-neutral-950 transition-colors hover:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"}
+                  className={ticket.id === selectedTicketId ? "flex min-h-20 flex-col justify-center border-2 border-ink bg-bauhaus-blue px-4 py-3 text-left text-white shadow-[4px_4px_0px_0px_#121212] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-20 flex-col justify-center border-2 border-ink bg-white px-4 py-3 text-left text-ink transition-colors hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40"}
                   disabled={isSoldOut || submitting || pendingPurchase}
                   key={ticket.id}
                   type="button"
                   onClick={() => setSelectedTicketId(ticket.id)}
                 >
-                  <strong className="text-sm">{ticket.zone}</strong>
+                  <strong className="text-sm font-black uppercase tracking-wider">{ticket.zone}</strong>
                   <span className="mt-1 text-sm opacity-75">{ticket.name} / {isSoldOut ? "Sold out" : `${live?.remainingQuantity ?? ticket.remainingQuantity} left`}</span>
                 </button>
               );
@@ -342,26 +347,26 @@ export default function ConcertDetailPage() {
         </article>
 
         <aside className={ui.panel}>
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-neutral-300 pb-4">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink pb-4">
             <div>
               <p className={ui.eyebrow}>Checkout</p>
-              <h2 className="mt-2 text-2xl font-bold">Buy tickets</h2>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-tight">Buy tickets</h2>
             </div>
-            <span className="border border-neutral-500 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-700">Secure flow</span>
+            <span className={ui.statusBadge}>Secure flow</span>
           </div>
           {selectedTicket ? (
             <form className={`${ui.form} mt-5`} onSubmit={submitPurchase}>
-              <div className="border border-neutral-300 p-4">
-                <span className="block text-sm text-neutral-600">{selectedTicket.name}</span>
+              <div className="border-2 border-ink bg-canvas p-4">
+                <span className="block text-sm font-medium text-ink/70">{selectedTicket.name}</span>
                 <strong className="mt-2 block text-2xl font-black">{formatMoney(selectedTicket.price)}</strong>
-                <small className="mt-2 block text-sm text-neutral-600">{remaining} left / limit {selectedTicket.perUserLimit}</small>
+                <small className="mt-2 block text-sm text-ink/70">{remaining} left / limit {selectedTicket.perUserLimit}</small>
               </div>
               <div>
-                <span className="text-sm font-medium">Quantity</span>
-                <div className="mt-2 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] border border-neutral-500">
+                <span className="text-sm font-bold uppercase tracking-wider">Quantity</span>
+                <div className="mt-2 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] border-2 border-ink bg-white">
                   <button
                     aria-label="Decrease quantity"
-                    className="min-h-11 border-r border-neutral-500 text-lg font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                    className="min-h-11 border-r-2 border-ink text-lg font-black transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!canBuy || submitting || pendingPurchase || quantity <= 1}
                     type="button"
                     onClick={() => setQuantity((current) => Math.max(1, current - 1))}
@@ -370,7 +375,7 @@ export default function ConcertDetailPage() {
                   </button>
                   <input
                     aria-label="Ticket quantity"
-                    className="!m-0 !min-h-11 !border-0 px-3 text-center text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-neutral-950"
+                    className="!m-0 !min-h-11 !border-0 px-3 text-center text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink"
                     disabled={!canBuy || submitting || pendingPurchase}
                     max={maxQuantity}
                     min="1"
@@ -385,7 +390,7 @@ export default function ConcertDetailPage() {
                   />
                   <button
                     aria-label="Increase quantity"
-                    className="min-h-11 border-l border-neutral-500 text-lg font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                    className="min-h-11 border-l-2 border-ink text-lg font-black transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={!canBuy || submitting || pendingPurchase || quantity >= maxQuantity}
                     type="button"
                     onClick={() => setQuantity((current) => Math.min(maxQuantity, current + 1))}
@@ -395,38 +400,38 @@ export default function ConcertDetailPage() {
                 </div>
               </div>
               <div>
-                <span className="text-sm font-medium">Payment provider</span>
-                <div className="mt-2 grid grid-cols-2 border border-neutral-500" aria-label="Payment provider">
+                <span className="text-sm font-bold uppercase tracking-wider">Payment provider</span>
+                <div className="mt-2 grid grid-cols-2 border-2 border-ink" aria-label="Payment provider">
                   <button
                     aria-pressed="true"
-                    className="min-h-11 bg-neutral-950 px-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                    className="min-h-11 bg-bauhaus-blue px-3 text-sm font-bold uppercase tracking-wider text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                     type="button"
                   >
                     VNPAY
                   </button>
                   <button
-                    className="min-h-11 cursor-not-allowed border-l border-neutral-500 bg-neutral-100 px-3 py-2 text-neutral-500"
+                    className="min-h-11 cursor-not-allowed border-l-2 border-ink bg-canvas px-3 py-2 text-ink/50"
                     disabled
                     title="MoMo is temporarily unavailable"
                     type="button"
                   >
-                    <span className="block text-sm font-semibold">MOMO</span>
+                    <span className="block text-sm font-bold uppercase tracking-wider">MOMO</span>
                     <span className="block text-xs">Unavailable</span>
                   </button>
                 </div>
               </div>
               {queueStatus?.active ? (
-                <div className="border border-neutral-950 p-4" aria-live="polite">
-                  <p className="text-sm font-semibold">
+                <div className="border-2 border-ink bg-bauhaus-yellow-soft p-4 shadow-[4px_4px_0px_0px_#121212]" aria-live="polite">
+                  <p className="text-sm font-bold uppercase tracking-wider">
                     {queueStatus.admitted ? "Your checkout slot is ready." : "You are in the waiting room."}
                   </p>
-                  <div className="mt-3 grid grid-cols-2 gap-px bg-neutral-300">
+                  <div className="mt-3 grid grid-cols-2 gap-px bg-ink">
                     <div className="bg-white p-3">
-                      <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Queue position</span>
+                      <span className="block text-xs font-bold uppercase tracking-widest text-ink/60">Queue position</span>
                       <strong className="mt-2 block text-xl">{queueStatus.position ?? "Admitted"}</strong>
                     </div>
                     <div className="bg-white p-3">
-                      <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Estimated wait</span>
+                      <span className="block text-xs font-bold uppercase tracking-widest text-ink/60">Estimated wait</span>
                       <strong className="mt-2 block text-xl">{queueStatus.estimatedWaitSeconds ? `${queueStatus.estimatedWaitSeconds}s` : "Ready"}</strong>
                     </div>
                   </div>
@@ -443,8 +448,8 @@ export default function ConcertDetailPage() {
                 </div>
               ) : null}
               {!saleOpen ? <p className={ui.alertError}>Sale opens {formatDate(selectedTicket.saleOpensAt)}.</p> : null}
-              <div className="flex items-center justify-between border-y border-neutral-300 py-3 text-sm">
-                <span className="text-neutral-600">Order total</span>
+              <div className="flex items-center justify-between border-y-2 border-ink py-3 text-sm">
+                <span className="font-bold uppercase tracking-wider text-ink/70">Order total</span>
                 <strong className="text-lg">{formatMoney(selectedTicket.price * quantity)}</strong>
               </div>
               <button className={ui.primaryButton} disabled={!canBuy || submitting || pendingPurchase} type="submit">
@@ -457,12 +462,12 @@ export default function ConcertDetailPage() {
         </aside>
 
         <article className={ui.panel}>
-          <h2 className="text-xl font-bold">Artist info</h2>
+          <h2 className="text-xl font-black uppercase tracking-tight">Artist info</h2>
           <p className={`${ui.muted} mt-3 whitespace-pre-line`}>{concert.artistBio || "Artist bio coming soon..."}</p>
         </article>
 
         <article className={ui.panel}>
-          <h2 className="text-xl font-bold">Venue</h2>
+          <h2 className="text-xl font-black uppercase tracking-tight">Venue</h2>
           <p className={`${ui.muted} mt-3`}>{concert.venue}</p>
           <p className={`${ui.muted} mt-2`}>{concert.description || "Concert details will be updated by the organizer."}</p>
         </article>

@@ -13,6 +13,7 @@ import {
 } from "../../../lib/audience-api";
 import { TicketCard } from "../../../components/ticket-card";
 import { ui } from "../../../components/ui";
+import { BauhausLogo } from "../../../components/bauhaus";
 
 const PENDING_STATUSES = new Set(["PENDING", "PENDING_CONFIRMATION"]);
 
@@ -80,7 +81,10 @@ export default function OrderPage() {
   return (
     <main className={ui.page}>
       <nav className={ui.nav} aria-label="Audience navigation">
-        <Link className={ui.brand} href="/">TicketBox</Link>
+        <Link className={ui.brand} href="/">
+          <BauhausLogo />
+          TicketBox
+        </Link>
         <div className={ui.navActions}>
           <Link className={`${ui.ghostButton} ${ui.compactButton}`} href="/me/tickets">My tickets</Link>
         </div>
@@ -104,12 +108,12 @@ export default function OrderPage() {
         </div>
       ) : null}
 
-      <section className="flex flex-wrap items-end justify-between gap-6 border-b border-neutral-950 pb-8" aria-live="polite">
+      <section className="flex flex-wrap items-end justify-between gap-6 border-b-4 border-ink pb-10" aria-live="polite">
         <div className="max-w-2xl">
           <p className={ui.eyebrow}>Order {shortId(orderId)}</p>
-          <h1 className="mt-3 text-4xl font-black">{loading && !order ? "Loading your order" : copy.title}</h1>
+          <h1 className="mt-3 text-4xl font-black uppercase tracking-tighter sm:text-5xl">{loading && !order ? "Loading your order" : copy.title}</h1>
           <p className={`${ui.muted} mt-4`}>
-            Status: <strong className="text-neutral-950">{order?.status || "Loading"}</strong>
+            Status: <strong className="text-ink">{order?.status || "Loading"}</strong>
             {order?.createdAt ? ` / Created ${formatDate(order.createdAt)}` : ""}
           </p>
           <p className={`${ui.muted} mt-2`}>{copy.description}</p>
@@ -125,8 +129,8 @@ export default function OrderPage() {
       {order && PENDING_STATUSES.has(order.status) ? (
         <section className={`${ui.panel} mt-8`} role="status">
           <div className="flex items-center gap-3">
-            <span className="h-3 w-3 animate-pulse bg-neutral-950 motion-reduce:animate-none" aria-hidden="true" />
-            <h2 className="text-xl font-bold">Waiting for payment confirmation</h2>
+            <span className="h-3 w-3 animate-pulse rounded-full bg-bauhaus-red motion-reduce:animate-none" aria-hidden="true" />
+            <h2 className="text-xl font-black uppercase tracking-tight">Waiting for payment confirmation</h2>
           </div>
           <p className={`${ui.muted} mt-3`}>You can keep this page open or return later from My tickets.</p>
         </section>
