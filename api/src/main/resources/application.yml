@@ -109,6 +109,16 @@ ticketbox:
     reaper-delay-ms: ${ARTIST_BIO_REAPER_DELAY_MS:60000}
   imports:
     vip-dir: ${VIP_IMPORT_DIR:./imports/vip}
+  rate-limit:
+    purchase:
+      capacity: ${TICKETBOX_RATE_LIMIT_PURCHASE_CAPACITY:5}
+      window: ${TICKETBOX_RATE_LIMIT_PURCHASE_WINDOW:10s}
+    read:
+      capacity: ${TICKETBOX_RATE_LIMIT_READ_CAPACITY:60}
+      window: ${TICKETBOX_RATE_LIMIT_READ_WINDOW:1m}
+    defaults:
+      capacity: ${TICKETBOX_RATE_LIMIT_DEFAULTS_CAPACITY:30}
+      window: ${TICKETBOX_RATE_LIMIT_DEFAULTS_WINDOW:10s}
 
 ---
 spring:
