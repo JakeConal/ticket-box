@@ -125,6 +125,17 @@ Thumbs.db
 *.swp
 *.swo
 
+# Eclipse / Buildship (Gradle import in Eclipse or VS Code Java tooling)
+.classpath
+.project
+.factorypath
+.apt_generated
+**/.settings/
+bin/
+
+# Playwright MCP local state
+.playwright-mcp/
+
 # Build output
 dist/
 build/
@@ -168,3 +179,6 @@ hs_err_pid*
 
 # Ngrok
 ngrok/
+
+# Vscode settings
+.vscode/
