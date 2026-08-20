@@ -26,6 +26,7 @@ export function BauhausThumbnail({ seed }: BauhausThumbnailProps) {
   );
 }
 
-function hash(value: string) {
+// Deterministic string hash, also reused for per-concert poster photo selection.
+export function hash(value: string) {
   return Array.from(value).reduce((total, character) => ((total << 5) - total + character.charCodeAt(0)) | 0, 0) >>> 0;
 }

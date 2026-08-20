@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -21,9 +22,17 @@ import {
 } from "../../../lib/audience-api";
 import { ui } from "../../../components/ui";
 import { BauhausLogo, Shape } from "../../../components/bauhaus";
+import { hash } from "../../../components/bauhaus-thumbnail";
 
 const PAYMENT_PROVIDER = "VNPAY" as const;
 const PURCHASE_ATTEMPT_TTL_MS = 15 * 60 * 1000;
+
+// Poster photos rotate deterministically per concert, matching the home hero treatment.
+const POSTER_PHOTOS = [
+  "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=70",
+  "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=70",
+  "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=900&q=70"
+];
 
 type PurchaseAttempt = {
   fingerprint: string;
@@ -305,54 +314,69 @@ export default function ConcertDetailPage() {
 
       {error ? <p className={ui.alertError} role="alert">{error}</p> : null}
 
-      <section className="grid gap-6 border-b-4 border-ink pb-10 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-end">
-        <div className="max-w-3xl">
+      {/* Poster header: concert photo left, poster-scale title right */}
+      <section className="grid gap-8 border-b-4 border-ink pb-12 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] lg:items-stretch">
+        <figure className="group relative h-56 overflow-hidden border-4 border-ink shadow-[8px_8px_0px_0px_#121212] sm:h-64 lg:h-auto">
+          <Image
+            alt={`Concert poster for ${concert.name}`}
+            className="object-cover grayscale transition-all duration-300 ease-out group-hover:grayscale-0"
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 18rem"
+            src={POSTER_PHOTOS[hash(concert.id) % POSTER_PHOTOS.length]}
+          />
+        </figure>
+        <div className="flex flex-col justify-center py-2">
           <p className={ui.eyebrow}>{concert.eventCode}</p>
-          <h1 className="mt-3 text-4xl font-black uppercase leading-[0.95] tracking-tighter sm:text-5xl">{concert.name}</h1>
+          <h1 className="mt-3 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-6xl lg:text-7xl">{concert.name}</h1>
           <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold uppercase tracking-wider text-ink/80">
             <span>{formatDate(concert.eventDate)}</span>
             <span>{concert.venue}</span>
           </div>
-          <p className={`${ui.muted} mt-4 max-w-2xl text-base`}>Choose a zone, join the waiting room if demand spikes, then continue to a supported payment provider.</p>
-        </div>
-        <div className="relative border-4 border-ink bg-bauhaus-yellow p-5 shadow-[6px_6px_0px_0px_#121212]">
-          <Shape className="absolute right-3 top-3 h-2.5 w-2.5" color="red" kind="circle" />
-          <strong className="block text-4xl font-black">{availability.reduce((sum, item) => sum + item.remainingQuantity, 0)}</strong>
-          <span className="mt-2 block text-xs font-bold uppercase tracking-widest text-ink/70">tickets visible now</span>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <span className="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-sm font-black uppercase tracking-wider shadow-[3px_3px_0px_0px_#121212]">
+              {availability.reduce((sum, item) => sum + item.remainingQuantity, 0)} tickets live
+            </span>
+            <span className={ui.statusBadge}>Secure checkout</span>
+          </div>
         </div>
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-2">
-        <article className={`${ui.panel} lg:col-span-2`}>
+      {/* Stage: seat map left; sticky ticket booth right keeps checkout on screen. */}
+      <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-start">
+        <article className={ui.panel}>
           <h2 className="text-2xl font-black uppercase tracking-tight">Seat map</h2>
           <div className="mt-5 overflow-hidden border-2 border-ink bg-white [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: concert.seatMapSvg || "" }} />
-          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <p className="mt-4 text-xs font-bold uppercase tracking-widest text-ink/60">
+            Pick a zone in the ticket booth — prices and availability update live.
+          </p>
+        </article>
+
+        <aside className={`${ui.panel} lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto`}>
+          <div className="border-b-2 border-ink pb-4">
+            <p className={ui.eyebrow}>Ticket booth</p>
+            <h2 className="mt-2 text-2xl font-black uppercase tracking-tight">Buy tickets</h2>
+          </div>
+          <div className="mt-5 grid gap-2">
             {concert.ticketTypes.map((ticket) => {
               const live = availabilityByTicket.get(ticket.id);
               const isSoldOut = live?.soldOut ?? ticket.remainingQuantity <= 0;
               return (
                 <button
-                  className={ticket.id === selectedTicketId ? "flex min-h-20 flex-col justify-center border-2 border-ink bg-bauhaus-blue px-4 py-3 text-left text-white shadow-[4px_4px_0px_0px_#121212] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-20 flex-col justify-center border-2 border-ink bg-white px-4 py-3 text-left text-ink transition-colors hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40"}
+                  className={ticket.id === selectedTicketId ? "flex min-h-16 flex-col justify-center border-2 border-ink bg-bauhaus-blue px-4 py-3 text-left text-white shadow-[4px_4px_0px_0px_#121212] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40" : "flex min-h-16 flex-col justify-center border-2 border-ink bg-white px-4 py-3 text-left text-ink transition-colors hover:bg-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40"}
                   disabled={isSoldOut || submitting || pendingPurchase}
                   key={ticket.id}
                   type="button"
                   onClick={() => setSelectedTicketId(ticket.id)}
                 >
-                  <strong className="text-sm font-black uppercase tracking-wider">{ticket.zone}</strong>
+                  <span className="flex items-baseline justify-between gap-2">
+                    <strong className="text-sm font-black uppercase tracking-wider">{ticket.zone}</strong>
+                    <strong className="text-sm font-black">{formatMoney(ticket.price)}</strong>
+                  </span>
                   <span className="mt-1 text-sm opacity-75">{ticket.name} / {isSoldOut ? "Sold out" : `${live?.remainingQuantity ?? ticket.remainingQuantity} left`}</span>
                 </button>
               );
             })}
-          </div>
-        </article>
-
-        <aside className={ui.panel}>
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink pb-4">
-            <div>
-              <p className={ui.eyebrow}>Checkout</p>
-              <h2 className="mt-2 text-2xl font-black uppercase tracking-tight">Buy tickets</h2>
-            </div>
-            <span className={ui.statusBadge}>Secure flow</span>
           </div>
           {selectedTicket ? (
             <form className={`${ui.form} mt-5`} onSubmit={submitPurchase}>
@@ -460,7 +484,10 @@ export default function ConcertDetailPage() {
             <p className={`${ui.muted} mt-5`}>No ticket types are available.</p>
           )}
         </aside>
+      </section>
 
+      {/* Program notes: supporting info below the purchase flow */}
+      <section className="mt-6 grid gap-6 md:grid-cols-2" aria-label="Program notes">
         <article className={ui.panel}>
           <h2 className="text-xl font-black uppercase tracking-tight">Artist info</h2>
           <p className={`${ui.muted} mt-3 whitespace-pre-line`}>{concert.artistBio || "Artist bio coming soon..."}</p>
