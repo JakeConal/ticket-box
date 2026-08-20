@@ -37,6 +37,7 @@ import {
   updateCheckerStatus
 } from "../../lib/admin-api";
 import { ui } from "../../components/ui";
+import { CornerDecoration } from "../../components/bauhaus";
 
 const EMPTY_CONCERT: ConcertForm = {
   name: "",
@@ -770,14 +771,14 @@ export default function AdminDashboardPage() {
 
   return (
     <main className={ui.adminPage}>
-      <header className="flex flex-wrap items-end justify-between gap-6 border-y border-neutral-950 py-5">
+      <header className="flex flex-wrap items-end justify-between gap-6 border-y-4 border-ink py-5">
         <div>
           <p className={ui.eyebrow}>TicketBox Admin</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-4xl">Organizer workspace</h1>
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-tighter sm:text-4xl">Organizer workspace</h1>
           <p className={`${ui.muted} mt-3`}>Manage event setup, inventory, check-in exceptions, and refund queues.</p>
         </div>
         <div className={ui.navActions}>
-          <span className="hidden max-w-56 truncate text-sm text-neutral-600 sm:inline">{sessionEmail}</span>
+          <span className="hidden max-w-56 truncate text-sm font-medium text-ink/70 sm:inline">{sessionEmail}</span>
           <button className={ui.ghostButton} type="button" onClick={signOut}>
             Sign out
           </button>
@@ -786,16 +787,16 @@ export default function AdminDashboardPage() {
 
       <nav
         aria-label="Admin sections"
-        className="sticky top-0 z-20 -mx-4 overflow-x-auto border-b border-neutral-950 bg-white px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+        className="sticky top-0 z-20 -mx-4 overflow-x-auto border-b-4 border-ink bg-canvas px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
       >
         <div className="flex min-w-max items-stretch gap-1 py-2">
           {ADMIN_SECTIONS.map((section) => (
             <a
               aria-current={activeSection === section.id ? "page" : undefined}
-              className={`inline-flex min-h-11 items-center border px-4 py-2 text-sm font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+              className={`inline-flex min-h-11 items-center border-2 px-4 py-2 text-sm font-bold uppercase tracking-wider no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
                 activeSection === section.id
-                  ? "border-neutral-950 bg-neutral-950 text-white"
-                  : "border-transparent text-neutral-700 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-950"
+                  ? "border-ink bg-bauhaus-blue text-white shadow-[3px_3px_0px_0px_#121212]"
+                  : "border-transparent text-ink/70 hover:border-ink hover:bg-white hover:text-ink"
               }`}
               href={`#${section.id}`}
               key={section.id}
@@ -812,18 +813,19 @@ export default function AdminDashboardPage() {
 
       {activeSection === "dashboard" ? (
         <section className={`${ui.panel} mt-6`} aria-labelledby="admin-workspaces-title">
-            <h2 className="text-xl font-bold" id="admin-workspaces-title">Workspaces</h2>
+            <h2 className="text-xl font-black uppercase tracking-tight" id="admin-workspaces-title">Workspaces</h2>
             <p className={`${ui.muted} mt-2`}>Each workspace shows only the tools needed for that task.</p>
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {ADMIN_SECTIONS.filter((section) => section.id !== "dashboard").map((section) => (
+              {ADMIN_SECTIONS.filter((section) => section.id !== "dashboard").map((section, index) => (
                 <a
-                  className="group min-h-24 border border-neutral-300 p-4 text-neutral-950 no-underline transition-colors hover:border-neutral-950 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                  className="group relative min-h-24 border-2 border-ink bg-white p-4 text-ink no-underline shadow-[4px_4px_0px_0px_#121212] transition-transform duration-200 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transform-none"
                   href={`#${section.id}`}
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
                 >
-                  <strong className="block text-base">{section.label}</strong>
-                  <span className="mt-2 block text-sm leading-6 text-neutral-600">{section.description}</span>
+                  <CornerDecoration index={index} />
+                  <strong className="block text-base font-black uppercase tracking-tight">{section.label}</strong>
+                  <span className="mt-2 block text-sm leading-6 text-ink/70">{section.description}</span>
                 </a>
               ))}
             </div>
@@ -874,10 +876,10 @@ export default function AdminDashboardPage() {
           </form>
 
           <div>
-            <label className="grid gap-2 text-sm font-medium text-neutral-950">
+            <label className="grid gap-2 text-sm font-medium text-ink">
               Search checker accounts
               <input
-                className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                className="min-h-11 w-full border border-ink bg-white px-3 py-2 text-base font-normal outline-none focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 placeholder="checker@ticketbox.vn"
                 type="search"
                 value={checkerSearch}
@@ -947,7 +949,7 @@ export default function AdminDashboardPage() {
                                   <label>
                                     Concert
                                     <select
-                                      className="mt-2 min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                      className="mt-2 min-h-11 w-full border border-ink bg-white px-3 py-2 text-base font-normal outline-none focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                                       required
                                       value={assignmentForm.concertId}
                                       onChange={(event) => setAssignmentForm((current) => ({ ...current, concertId: event.target.value }))}
@@ -967,7 +969,7 @@ export default function AdminDashboardPage() {
                                     />
                                   </label>
                                   <label>
-                                    Lane <span className="font-normal text-neutral-600">(optional)</span>
+                                    Lane <span className="font-normal text-ink/70">(optional)</span>
                                     <input
                                       maxLength={255}
                                       placeholder="LANE-1"
@@ -983,10 +985,10 @@ export default function AdminDashboardPage() {
                                       value={assignmentForm.allowedZones}
                                       onChange={(event) => setAssignmentForm((current) => ({ ...current, allowedZones: event.target.value }))}
                                     />
-                                    <span className="mt-1 block text-xs font-normal text-neutral-600">Separate multiple zones with commas.</span>
+                                    <span className="mt-1 block text-xs font-normal text-ink/70">Separate multiple zones with commas.</span>
                                   </label>
                                   <label>
-                                    Device <span className="font-normal text-neutral-600">(optional)</span>
+                                    Device <span className="font-normal text-ink/70">(optional)</span>
                                     <input
                                       maxLength={255}
                                       placeholder="device-1"
@@ -997,7 +999,7 @@ export default function AdminDashboardPage() {
                                   <label>
                                     Initial state
                                     <select
-                                      className="mt-2 min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                      className="mt-2 min-h-11 w-full border border-ink bg-white px-3 py-2 text-base font-normal outline-none focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                                       value={assignmentForm.state}
                                       onChange={(event) => setAssignmentForm((current) => ({
                                         ...current,
@@ -1044,7 +1046,7 @@ export default function AdminDashboardPage() {
                                           <td>
                                             <select
                                               aria-label={`State for ${assignment.gateId}`}
-                                              className="min-h-10 border border-neutral-500 bg-white px-2 py-1 text-sm outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:opacity-50"
+                                              className="min-h-10 border border-ink bg-white px-2 py-1 text-sm outline-none focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-50"
                                               disabled={assignmentSaving}
                                               value={assignment.state}
                                               onChange={(event) => void changeAssignmentState(
@@ -1079,7 +1081,7 @@ export default function AdminDashboardPage() {
                                 New password for {checker.email}
                                 <input
                                   autoComplete="new-password"
-                                  className="min-h-11 border border-neutral-500 bg-white px-3 py-2 text-base font-normal outline-none focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+                                  className="min-h-11 border border-ink bg-white px-3 py-2 text-base font-normal outline-none focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                                   minLength={8}
                                   required
                                   type="password"
@@ -1123,10 +1125,10 @@ export default function AdminDashboardPage() {
               <p className={ui.eyebrow}>Event context</p>
               <h2 className="mt-2 text-2xl font-bold" id="event-context-title">Choose concert</h2>
             </div>
-            <label className="grid gap-2 text-sm font-semibold text-neutral-950">
+            <label className="grid gap-2 text-sm font-semibold text-ink">
               Current concert
               <select
-                className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-11 w-full border border-ink bg-white px-3 py-2 text-base font-normal text-ink outline-none transition-colors focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={loading || workspaceLoading || importing || saving || Boolean(deletingVipId) || concerts.length === 0}
                 value={selectedId}
                 onChange={(event) => setSelectedId(event.target.value)}
@@ -1164,17 +1166,17 @@ export default function AdminDashboardPage() {
           {workspaceLoading ? <p className={`${ui.muted} mt-4`} role="status">Loading event workspace...</p> : null}
           {!loading && concerts.length === 0 ? <p className={`${ui.muted} mt-4`}>No concerts yet.</p> : null}
           {selectedConcert ? (
-            <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-neutral-300 pt-4 text-sm text-neutral-700">
+            <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-ink/30 pt-4 text-sm text-ink/80">
               <StatusBadge status={selectedConcert.status} />
-              <span><strong className="text-neutral-950">Code:</strong> {selectedConcert.eventCode}</span>
-              <span><strong className="text-neutral-950">Venue:</strong> {selectedConcert.venue}</span>
-              <span><strong className="text-neutral-950">Date:</strong> {formatDate(selectedConcert.eventDate)}</span>
+              <span><strong className="text-ink">Code:</strong> {selectedConcert.eventCode}</span>
+              <span><strong className="text-ink">Venue:</strong> {selectedConcert.venue}</span>
+              <span><strong className="text-ink">Date:</strong> {formatDate(selectedConcert.eventDate)}</span>
             </div>
           ) : null}
         </section>
 
         <section className="mt-6" aria-live="polite">
-          <div className="flex flex-wrap items-end justify-between gap-5 border-b border-neutral-950 pb-5">
+          <div className="flex flex-wrap items-end justify-between gap-5 border-b border-ink pb-5">
             <div>
               <p className={ui.eyebrow}>{activeSectionMeta.label}</p>
               <h2 className="mt-2 text-3xl font-black">
@@ -1292,9 +1294,9 @@ export default function AdminDashboardPage() {
                   ) : null}
                 </div>
               </form>
-              <div className="mt-5 grid border-t border-neutral-300">
+              <div className="mt-5 grid border-t border-ink/30">
                 {detail?.ticketTypes.map((ticket) => (
-                  <button className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-300 py-3 text-left text-sm transition-colors hover:text-neutral-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950" key={ticket.id} type="button" onClick={() => setTicketForm(fromTicket(ticket))}>
+                  <button className="flex min-h-12 items-center justify-between gap-4 border-b border-ink/30 py-3 text-left text-sm transition-colors hover:text-ink/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" key={ticket.id} type="button" onClick={() => setTicketForm(fromTicket(ticket))}>
                     <span>{ticket.name} / {ticket.zone}</span>
                     <strong>{ticket.remainingQuantity}/{ticket.totalQuantity}</strong>
                   </button>
@@ -1304,7 +1306,7 @@ export default function AdminDashboardPage() {
 
             {activeSection === "concerts" ? <section className={ui.panel} aria-labelledby="bio-title">
               <h3 className="text-xl font-bold" id="bio-title">AI artist bio</h3>
-              <div className="mt-5 grid gap-3 border-y border-neutral-300 py-3 text-sm">
+              <div className="mt-5 grid gap-3 border-y border-ink/30 py-3 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <span>Status</span>
                   <span className={`${ui.statusBadge} min-w-[7.75rem] items-center justify-center`}>
@@ -1322,12 +1324,12 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
               {bioGenerating ? (
-                <div className="mt-4 border border-neutral-950 bg-neutral-50 px-4 py-3 text-sm text-neutral-900" role="status" aria-live="polite">
+                <div className="mt-4 border border-ink bg-canvas px-4 py-3 text-sm text-ink" role="status" aria-live="polite">
                   <p className="font-semibold">
                     Generating draft
                     <AnimatedEllipsis />
                   </p>
-                  <p className="mt-1 text-neutral-600">
+                  <p className="mt-1 text-ink/70">
                     {hasPublicBio ? "A public bio is already live while the new draft is processing." : "No public bio is live yet while the first draft is processing."}
                   </p>
                 </div>
@@ -1338,9 +1340,9 @@ export default function AdminDashboardPage() {
                   {bioFailed ? <p className="mt-2 font-normal">Retry with a text-based PDF press kit, or try again when the AI service is available.</p> : null}
                 </div>
               ) : null}
-              <label className="mt-4 grid gap-2 border border-dashed border-neutral-500 p-4 text-sm font-medium text-neutral-950">
+              <label className="mt-4 grid gap-2 border border-dashed border-ink/50 p-4 text-sm font-medium text-ink">
                 Press kit PDF
-                <span className="font-normal text-neutral-600">Upload a PDF press kit with selectable text. Image-only scans may fail. Maximum size: 20MB.</span>
+                <span className="font-normal text-ink/70">Upload a PDF press kit with selectable text. Image-only scans may fail. Maximum size: 20MB.</span>
                 <input accept="application/pdf,.pdf" disabled={!detail || saving} type="file" onChange={handlePdfUpload} />
               </label>
               <label className={`${ui.form} mt-4`}>
@@ -1370,9 +1372,9 @@ export default function AdminDashboardPage() {
                 {stats?.ticketsSoldPerType.map((item) => (
                   <div className="grid grid-cols-[minmax(0,1fr)_3rem] items-center gap-3 text-sm" key={item.ticketTypeId}>
                     <div>
-                      <span className="block text-neutral-700">{item.name}</span>
-                      <div className="mt-2 h-2 bg-neutral-200">
-                        <div className="h-full bg-neutral-950" style={{ width: `${Math.min(100, item.soldQuantity * 8)}%` }} />
+                      <span className="block text-ink/80">{item.name}</span>
+                      <div className="mt-2 h-2 bg-ink/15">
+                        <div className="h-full bg-ink" style={{ width: `${Math.min(100, item.soldQuantity * 8)}%` }} />
                       </div>
                     </div>
                     <strong className="text-right">{item.soldQuantity}</strong>
@@ -1399,7 +1401,7 @@ export default function AdminDashboardPage() {
               <div className="mt-4 grid gap-4">
                 <label
                   className={`grid min-h-36 cursor-pointer place-content-center gap-2 border border-dashed p-5 text-center transition-colors ${
-                    dragActive ? "border-neutral-950 bg-neutral-100" : "border-neutral-500 hover:bg-neutral-50"
+                    dragActive ? "border-ink bg-canvas" : "border-ink hover:bg-canvas"
                   } ${!detail || importing || workspaceLoading ? "pointer-events-none opacity-50" : ""}`}
                   aria-disabled={!detail || importing || workspaceLoading}
                   onDragEnter={handleDrag}
@@ -1407,8 +1409,8 @@ export default function AdminDashboardPage() {
                   onDragOver={handleDrag}
                   onDrop={handleDrop}
                 >
-                  <span className="font-semibold text-neutral-900">Drop a VIP CSV here or choose a file</span>
-                  <span className="text-xs leading-5 text-neutral-600">
+                  <span className="font-semibold text-ink">Drop a VIP CSV here or choose a file</span>
+                  <span className="text-xs leading-5 text-ink/70">
                     Required columns: event_code and phone. Optional: name, sponsor, zone. Maximum 5MB.
                   </span>
                   <input
@@ -1421,7 +1423,7 @@ export default function AdminDashboardPage() {
                 </label>
 
                 {pendingVipFile && detail ? (
-                  <div className="border border-neutral-950 p-4" role="group" aria-label="Review VIP import">
+                  <div className="border border-ink p-4" role="group" aria-label="Review VIP import">
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                       <div>
                         <p className="font-semibold">{pendingVipFile.name}</p>
@@ -1486,7 +1488,7 @@ export default function AdminDashboardPage() {
                             <td>
                               <span className="block font-semibold">{summary.fileName}</span>
                               {summary.archived && summary.archive ? (
-                                <span className="mt-1 block text-xs text-neutral-500">Archive: {summary.archive}</span>
+                                <span className="mt-1 block text-xs text-ink/60">Archive: {summary.archive}</span>
                               ) : null}
                             </td>
                             <td>{summary.totalRows}</td>
@@ -1524,7 +1526,7 @@ export default function AdminDashboardPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <input
                   aria-label="Filter VIP guests"
-                  className="min-h-11 w-full border border-neutral-500 bg-white px-3 py-2 text-base font-normal text-neutral-950 outline-none transition-colors focus:border-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 disabled:opacity-50"
+                  className="min-h-11 w-full border border-ink bg-white px-3 py-2 text-base font-normal text-ink outline-none transition-colors focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-50"
                   disabled={!detail || vipDirectoryLoading}
                   placeholder="Filter by name, phone, sponsor, or zone..."
                   type="search"
@@ -1551,11 +1553,11 @@ export default function AdminDashboardPage() {
                   <>
                     <div className="grid gap-3 sm:hidden">
                       {filteredVips.map((vip) => (
-                        <article className="border border-neutral-300 p-4" key={vip.id}>
+                        <article className="border border-ink/30 p-4" key={vip.id}>
                           <div className="flex items-start justify-between gap-3">
                             <h4 className="font-semibold">{vip.name}</h4>
                             {vip.entered ? (
-                              <span className="inline-flex shrink-0 border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                              <span className="inline-flex shrink-0 border border-ink bg-ink px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
                                 Entered
                               </span>
                             ) : (
@@ -1563,15 +1565,15 @@ export default function AdminDashboardPage() {
                             )}
                           </div>
                           <dl className="mt-4 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
-                            <dt className="text-neutral-600">Phone</dt>
+                            <dt className="text-ink/70">Phone</dt>
                             <dd>{vip.phoneMasked}</dd>
-                            <dt className="text-neutral-600">Sponsor</dt>
+                            <dt className="text-ink/70">Sponsor</dt>
                             <dd>{vip.sponsor || "-"}</dd>
-                            <dt className="text-neutral-600">Zone</dt>
+                            <dt className="text-ink/70">Zone</dt>
                             <dd><span className={ui.statusBadge}>{vip.zone}</span></dd>
                             {vip.enteredAt ? (
                               <>
-                                <dt className="text-neutral-600">Entered</dt>
+                                <dt className="text-ink/70">Entered</dt>
                                 <dd>{formatDate(vip.enteredAt)}</dd>
                               </>
                             ) : null}
@@ -1610,7 +1612,7 @@ export default function AdminDashboardPage() {
                               </td>
                               <td>
                                 {vip.entered ? (
-                                  <span className="inline-flex border border-neutral-950 bg-neutral-950 px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+                                  <span className="inline-flex border border-ink bg-ink px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-white">
                                     Entered {vip.enteredAt ? formatDate(vip.enteredAt) : ""}
                                   </span>
                                 ) : (

@@ -138,6 +138,16 @@ pipeline {
       steps {
         withCredentials([string(credentialsId: env.SONAR_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
           sh '''
+            # Copy the LCOV coverage report produced by the Test stage image
+            # so the scanner can report real coverage to SonarQube.
+            coverage_container=$(docker create "$WEB_IMAGE-test-$LOCAL_IMAGE_TAG_SUFFIX")
+            mkdir -p "$WORKSPACE/ticketbox-web/coverage"
+            docker cp "$coverage_container:/workspace/ticketbox-web/coverage/lcov.info" "$WORKSPACE/ticketbox-web/coverage/lcov.info"
+            docker rm "$coverage_container"
+            # The report contains absolute paths from inside the build image;
+            # rewrite them to project-relative so the scanner can match them.
+            sed -i 's|SF:/workspace/ticketbox-web/|SF:|' "$WORKSPACE/ticketbox-web/coverage/lcov.info"
+
             docker run --rm \
               --network ticketbox-infra \
               --volumes-from ticketbox-jenkins \
@@ -146,6 +156,7 @@ pipeline {
               --env SONAR_TOKEN \
               "$SONAR_SCANNER_IMAGE" \
               -Dsonar.projectKey="ticketbox-web${CHANGE_ID:+-pr-$CHANGE_ID}" \
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
               -Dsonar.qualitygate.wait=true \
               -Dsonar.qualitygate.timeout=300
           '''

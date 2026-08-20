@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { registerAudience } from "../../lib/audience-api";
 import { ui } from "../../components/ui";
+import { BauhausLogo, Shape } from "../../components/bauhaus";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,10 +30,11 @@ export default function RegisterPage() {
 
   return (
     <main className={ui.authPage}>
-      <section className="w-full max-w-md border border-neutral-950 bg-white p-6 sm:p-8" aria-labelledby="register-title">
+      <section className="relative w-full max-w-md border-4 border-ink bg-white p-6 shadow-[8px_8px_0px_0px_#121212] sm:p-8" aria-labelledby="register-title">
+        <Shape className="absolute right-4 top-4 h-3 w-3" color="blue" kind="square" />
         <div>
-          <p className={ui.eyebrow}>TicketBox</p>
-          <h1 className="mt-3 text-3xl font-black" id="register-title">Create an audience account</h1>
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink/60"><BauhausLogo /> TicketBox</p>
+          <h1 className="mt-3 text-3xl font-black uppercase tracking-tighter" id="register-title">Create an audience account</h1>
           <p className={`${ui.muted} mt-3`}>New public registrations are created with audience permissions.</p>
         </div>
         <form className={`${ui.form} mt-8`} onSubmit={submit}>
