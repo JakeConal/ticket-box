@@ -7,48 +7,9 @@ online/offline check-in in one repository.
 
 ## Product Screens
 
-### Audience concert discovery
+### Audience web walkthrough
 
-![TicketBox audience concert browser](assets/screenshots/audience-home.png)
-
-### Ticket selection and venue map
-
-![TicketBox concert detail and seat map](assets/screenshots/concert-detail.png)
-
-### Organizer operations
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-dashboard.png" alt="TicketBox organizer dashboard" />
-      <br /><strong>Dashboard</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-concerts.png" alt="TicketBox concert management workspace" />
-      <br /><strong>Concerts</strong>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-checkers-gates.png" alt="TicketBox checker accounts and gate assignments" />
-      <br /><strong>Checkers &amp; Gates</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-vip-guests.png" alt="TicketBox VIP guest import and directory" />
-      <br /><strong>VIP Guests</strong>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-checkins.png" alt="TicketBox check-in statistics and conflicts" />
-      <br /><strong>Check-ins</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-refunds.png" alt="TicketBox refund queue" />
-      <br /><strong>Refunds</strong>
-    </td>
-  </tr>
-</table>
+![TicketBox audience web walkthrough](assets/demo/ticketbox-web-demo.gif)
 
 ### Gate checker
 
