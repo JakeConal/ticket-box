@@ -7,48 +7,9 @@ online/offline check-in in one repository.
 
 ## Product Screens
 
-### Audience concert discovery
+### Audience web walkthrough
 
-![TicketBox audience concert browser](assets/screenshots/audience-home.png)
-
-### Ticket selection and venue map
-
-![TicketBox concert detail and seat map](assets/screenshots/concert-detail.png)
-
-### Organizer operations
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-dashboard.png" alt="TicketBox organizer dashboard" />
-      <br /><strong>Dashboard</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-concerts.png" alt="TicketBox concert management workspace" />
-      <br /><strong>Concerts</strong>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-checkers-gates.png" alt="TicketBox checker accounts and gate assignments" />
-      <br /><strong>Checkers &amp; Gates</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-vip-guests.png" alt="TicketBox VIP guest import and directory" />
-      <br /><strong>VIP Guests</strong>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-checkins.png" alt="TicketBox check-in statistics and conflicts" />
-      <br /><strong>Check-ins</strong>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/screenshots/admin-refunds.png" alt="TicketBox refund queue" />
-      <br /><strong>Refunds</strong>
-    </td>
-  </tr>
-</table>
+![TicketBox audience web walkthrough](assets/demo/ticketbox-web-demo.gif)
 
 ### Gate checker
 
@@ -76,45 +37,7 @@ online/offline check-in in one repository.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  subgraph Clients["Client applications"]
-    Audience["Audience browser"]
-    Organizer["Organizer browser"]
-    Checker["Expo checker app"]
-    Local["SQLite + SecureStore<br/>offline cache"]
-  end
-
-  Proxy["Nginx reverse proxy<br/>:8088"]
-  Web["Next.js 15<br/>audience + admin"]
-  API["Spring Boot 4 API"]
-
-  subgraph Data["Data and infrastructure"]
-    Postgres["PostgreSQL 17"]
-    Redis["Redis 8"]
-    Mail["SMTP / Mailpit"]
-    Files["VIP imports + PDF storage"]
-  end
-
-  subgraph External["External integrations"]
-    Payment["VNPay / MoMo"]
-    AI["NVIDIA AI endpoint"]
-  end
-
-  Audience --> Proxy
-  Organizer --> Proxy
-  Checker --> Proxy
-  Checker <--> Local
-  Proxy -->|"Page requests"| Web
-  Proxy -->|"/api/*"| API
-  Web -->|"Server-side API calls"| API
-  API --> Postgres
-  API --> Redis
-  API --> Mail
-  API --> Files
-  API --> Payment
-  API --> AI
-```
+![TicketBox architecture](assets/architecture/architecture.png)
 
 ### Offline check-in path
 
