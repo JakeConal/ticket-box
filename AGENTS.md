@@ -425,26 +425,71 @@ Use official documentation when external API behavior is uncertain.
 
 If subagents or parallel agents are available, delegate independent investigation tasks when this improves accuracy or speed.
 
-Useful roles include:
+## When to Use Subagents
+
+Spawn a subagent only when at least one of these conditions is true:
+
+- The investigation is **independent** of another in-flight investigation (no shared mutable state, no ordering dependency).
+- The task requires consulting a knowledge domain that benefits from focused, isolated context (e.g., security review of a specific diff).
+- Parallelizing the work will meaningfully reduce elapsed time and the coordination overhead is low.
+- The scope of a sub-task is well-defined enough that the subagent can succeed or fail cleanly without constant guidance.
+
+Do not create multiple agents when a single agent can complete the task efficiently. Orchestration overhead is real — prefer sequential work for small tasks.
+
+## Subagent Roles
+
+Assign each subagent a single, clearly bounded role. Standard roles include:
 
 ### Codebase Explorer
-Find relevant modules, architecture, dependencies, and execution flow.
+Find relevant modules, architecture, dependencies, and execution flow. Output: a concise map of affected files, entry points, and data paths.
 
 ### Documentation Researcher
-Consult official documentation for unfamiliar APIs or technologies.
+Consult official documentation for unfamiliar APIs, libraries, or technologies. Output: authoritative answers with source citations; never invent API behavior.
 
 ### Test Engineer
-Analyze missing tests, edge cases, and failure scenarios.
+Analyze missing tests, edge cases, and failure scenarios for a specific component. Output: a list of test cases with rationale, ready for implementation.
 
 ### Security Reviewer
-Inspect the proposed changes for security vulnerabilities.
+Inspect proposed changes for security vulnerabilities (injection, SSRF, privilege escalation, secrets exposure, etc.). Output: an explicit list of findings with severity and remediation advice.
 
 ### Code Reviewer
-Review the final diff independently for correctness and maintainability.
+Review the final diff independently for correctness, maintainability, and adherence to project conventions. Output: a structured review with blocking issues distinguished from suggestions.
 
-Do not create multiple agents when a single agent can complete the task efficiently.
+## Coordination Rules
 
-Avoid having multiple agents modify the same code simultaneously unless their work is isolated.
+**Isolation first.** Each subagent must operate on a clearly defined, non-overlapping scope. Two subagents must never modify the same file or shared state simultaneously.
+
+**Explicit inputs and outputs.** Before spawning a subagent, define:
+- the exact question or task it must answer;
+- the inputs it receives (file paths, diff, API surface, etc.);
+- the expected output format.
+
+**Merge results before acting.** The orchestrating agent must collect and reconcile all subagent outputs before writing code, making decisions, or running commands. Never act on a partial result while other agents are still running.
+
+**Resolve conflicts explicitly.** If two subagents return contradictory findings, the orchestrator must reason through the conflict and choose a position — never silently pick one or average them.
+
+**Surface failures clearly.** If a subagent fails, times out, or returns an inconclusive result, report it explicitly. Do not substitute invented output for a missing result.
+
+## Subagent Output Standards
+
+Each subagent must follow the same honesty rules as the primary agent:
+
+- Distinguish **Verified** (actually observed) from **Inferred** (reasoned from evidence) from **Not verified** (unknown).
+- Never fabricate file contents, test results, API behavior, or command output.
+- Cite the source (file path + line, documentation URL, command output) for every material claim.
+
+## What Subagents Must Not Do
+
+- Modify files outside their assigned scope without explicit authorization.
+- Hard-code credentials, disable security checks, or make destructive changes.
+- Spawn additional subagents without the orchestrator's knowledge.
+- Proceed when their task is ambiguous — they must surface the ambiguity to the orchestrator instead.
+
+## Efficiency Guidelines
+
+- Prefer two focused subagents over five loosely scoped ones.
+- Batch independent read-only investigations into a single parallel call when the runtime supports it.
+- Stop delegating and consolidate once the parallel work is complete; do not keep spawning for diminishing returns.
 
 ---
 
