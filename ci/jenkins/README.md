@@ -145,7 +145,7 @@ ticketbox-web/**
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
-ci/docker/ticketbox-web.Dockerfile
+ticketbox-web/Dockerfile
 ci/jenkins/Jenkinsfile.web
 ```
 
@@ -156,7 +156,7 @@ ticketbox-checker/**
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
-ci/docker/ticketbox-checker.Dockerfile
+ticketbox-checker/Dockerfile
 ci/jenkins/Jenkinsfile.checker
 ```
 

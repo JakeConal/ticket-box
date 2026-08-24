@@ -96,7 +96,7 @@ pipeline {
             'package.json',
             'pnpm-lock.yaml',
             'pnpm-workspace.yaml',
-            'ci/docker/ticketbox-web.Dockerfile',
+            'ticketbox-web/Dockerfile',
             'ci/jenkins/Jenkinsfile.web'
           ]).toString()
 
@@ -121,7 +121,7 @@ pipeline {
           docker build \
             --target test \
             -t "$WEB_IMAGE-test-$LOCAL_IMAGE_TAG_SUFFIX" \
-            -f ci/docker/ticketbox-web.Dockerfile \
+            -f ticketbox-web/Dockerfile \
             .
         '''
       }
@@ -170,12 +170,6 @@ pipeline {
       }
       steps {
         sh '''
-          docker build \
-            --target build \
-            -t "$WEB_IMAGE-build-$LOCAL_IMAGE_TAG_SUFFIX" \
-            -f ci/docker/ticketbox-web.Dockerfile \
-            .
-
           docker build \
             -t "$WEB_IMAGE-$LOCAL_IMAGE_TAG_SUFFIX" \
             -f ticketbox-web/Dockerfile \

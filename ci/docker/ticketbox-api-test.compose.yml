@@ -4,7 +4,8 @@ services:
   api-test:
     build:
       context: ../../api
-      dockerfile: Dockerfile.ci
+      dockerfile: Dockerfile
+      target: test
     environment:
       SPRING_PROFILES_ACTIVE: test
       TEST_REDIS_HOST: redis
