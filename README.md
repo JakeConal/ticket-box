@@ -76,45 +76,7 @@ online/offline check-in in one repository.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  subgraph Clients["Client applications"]
-    Audience["Audience browser"]
-    Organizer["Organizer browser"]
-    Checker["Expo checker app"]
-    Local["SQLite + SecureStore<br/>offline cache"]
-  end
-
-  Proxy["Nginx reverse proxy<br/>:8088"]
-  Web["Next.js 15<br/>audience + admin"]
-  API["Spring Boot 4 API"]
-
-  subgraph Data["Data and infrastructure"]
-    Postgres["PostgreSQL 17"]
-    Redis["Redis 8"]
-    Mail["SMTP / Mailpit"]
-    Files["VIP imports + PDF storage"]
-  end
-
-  subgraph External["External integrations"]
-    Payment["VNPay / MoMo"]
-    AI["NVIDIA AI endpoint"]
-  end
-
-  Audience --> Proxy
-  Organizer --> Proxy
-  Checker --> Proxy
-  Checker <--> Local
-  Proxy -->|"Page requests"| Web
-  Proxy -->|"/api/*"| API
-  Web -->|"Server-side API calls"| API
-  API --> Postgres
-  API --> Redis
-  API --> Mail
-  API --> Files
-  API --> Payment
-  API --> AI
-```
+![TicketBox architecture](assets/architecture/architecture.png)
 
 ### Offline check-in path
 
