@@ -1,0 +1,16 @@
+# Local chart for Mailpit, installed into the mailpit namespace (Phase 2 of
+# docs/kubernetes-migration-plan.md).
+# Install:
+#   helm upgrade --install mailpit charts/mailpit -n mailpit
+
+image:
+  repository: axllent/mailpit
+  tag: v1.22
+  pullPolicy: IfNotPresent
+
+smtpPort: 1025
+webPort: 8025
+
+ingress:
+  enabled: true
+  host: mailpit.ticketbox.local

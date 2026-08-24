@@ -1,0 +1,60 @@
+# Values for the official sonarqube/sonarqube chart, installed into the
+# sonarqube namespace (Phase 2 of docs/kubernetes-migration-plan.md).
+# Install:
+#   helm upgrade --install sonarqube sonarqube/sonarqube -n sonarqube -f charts/sonarqube-values.yaml
+
+# Community build (chart requires community.enabled=true, not edition).
+community:
+  enabled: true
+
+# Monitoring passcode is required by the chart. It is stored out-of-band in
+# the "sonarqube-monitoring-passcode" secret (created manually, not committed).
+monitoringPasscodeSecretName: sonarqube-monitoring-passcode
+monitoringPasscodeSecretKey: passcode
+
+postgresql:
+  enabled: true
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - name: sonarqube.ticketbox.local
+      path: /
+
+# The chart's init container sets vm.max_map_count inside the node; it needs
+# to run privileged on minikube's docker driver.
+initSysctl:
+  enabled: true
+  securityContext:
+    privileged: true
+
+# First boot is slow (embedded Elasticsearch indexing + WSL clock drift when
+# the host sleeps). The chart default allows only ~4.5 min before the
+# startupProbe kills the pod; extend it to ~15 min.
+startupProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 90
+  timeoutSeconds: 5
+
+# The chart's readinessProbe uses a 1s exec timeout, which is too tight on a
+# slow minikube node. Reproduce the chart's probe command (port 9000, root
+# context) with a relaxed timeout and higher failure threshold.
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - |
+        if curl --noproxy "*" -s http://localhost:9000/api/system/status | grep -q -e '"status":"UP"' -e '"status":"DB_MIGRATION_NEEDED"' -e '"status":"DB_MIGRATION_RUNNING"'; then
+          exit 0
+        fi
+        exit 1
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 12
+  timeoutSeconds: 5
