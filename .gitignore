@@ -179,6 +179,5 @@ hs_err_pid*
 
 # Ngrok
 ngrok/
-
-# Vscode settings
-.vscode/
+# Teaching workspace (personal learning material, not project source)
+learn/
