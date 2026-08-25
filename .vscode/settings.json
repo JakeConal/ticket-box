@@ -1,0 +1,13 @@
+{
+    "gradle.nestedProjects": [
+        "api"
+    ],
+    "java.import.generatesMetadataFilesAtProjectRoot": false,
+    "java.import.gradle.version": "9.6.1",
+    "java.import.exclusions": [
+        "**/node_modules/**",
+        "**/.metadata/**",
+        "**/archetype-resources/**",
+        "**/META-INF/maven/**"
+    ]
+}
