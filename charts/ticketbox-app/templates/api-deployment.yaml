@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: ticketbox-app
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          envFrom:
+            - configMapRef:
+                name: ticketbox-config
+          env:
+            - name: SERVER_PORT
+              value: {{ .Values.api.port | quote }}
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres:{{ .Values.postgres.port }}/{{ .Values.postgres.db }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-db
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-db
+                  key: POSTGRES_PASSWORD
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-jwt
+                  key: AUTH_JWT_SECRET
+            - name: QUEUE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-jwt
+                  key: QUEUE_JWT_SECRET
+            - name: VNPAY_TMN_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-payments
+                  key: VNPAY_TMN_CODE
+            - name: VNPAY_HASH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-payments
+                  key: VNPAY_HASH_SECRET
+            - name: MOMO_PARTNER_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-payments
+                  key: MOMO_PARTNER_CODE
+            - name: MOMO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-payments
+                  key: MOMO_ACCESS_KEY
+            - name: MOMO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-payments
+                  key: MOMO_SECRET_KEY
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ticketbox-nvidia
+                  key: NVIDIA_API_KEY
+          volumeMounts:
+            - name: imports
+              mountPath: /app/imports
+            - name: storage
+              mountPath: /app/storage
+            - name: qr-keys
+              mountPath: /app/keys
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+      volumes:
+        - name: imports
+          persistentVolumeClaim:
+            claimName: api-imports
+        - name: storage
+          persistentVolumeClaim:
+            claimName: api-storage
+        - name: qr-keys
+          secret:
+            secretName: ticketbox-qr

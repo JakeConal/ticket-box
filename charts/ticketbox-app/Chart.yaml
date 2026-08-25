@@ -1,0 +1,12 @@
+# Chart for the ticketbox application stack (api, web, postgres, redis,
+# ingress), installed into the ticketbox namespace.
+# See openspec/changes/kubernetes-app-workloads/ for the proposal/design.
+# Install:
+#   helm upgrade --install ticketbox-app charts/ticketbox-app -n ticketbox
+
+apiVersion: v2
+name: ticketbox-app
+description: TicketBox application stack (api, web, postgres, redis, ingress)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

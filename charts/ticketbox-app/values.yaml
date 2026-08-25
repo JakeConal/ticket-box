@@ -1,0 +1,98 @@
+# Default values for ticketbox-app.
+# Secrets referenced below (ticketbox-db, ticketbox-jwt, ticketbox-payments,
+# ticketbox-nvidia, ticketbox-qr) are NOT created by this chart - see
+# openspec/changes/kubernetes-app-workloads/tasks.md task 6.1 for the
+# kubectl create secret commands.
+
+api:
+  image:
+    repository: jakecoop17/ticketbox-api
+    tag: master-7c381e76ef44
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  storage:
+    importsSize: 1Gi
+    storageSize: 2Gi
+
+web:
+  image:
+    repository: jakecoop17/ticketbox-web
+    tag: master-0b2ff2e11327
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+postgres:
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  port: 5432
+  db: ticketbox
+  user: ticketbox
+  storageSize: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+redis:
+  image:
+    repository: redis
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  port: 6379
+  storageSize: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  host: ticketbox.local
+  className: nginx
+
+# Non-secret env vars shared by api/web via the ticketbox-config ConfigMap.
+config:
+  SPRING_PROFILES_ACTIVE: dev
+  QUEUE_ENABLED: "true"
+  QUEUE_ACTIVE_WINDOW_BEFORE: 5m
+  QUEUE_ACTIVE_WINDOW_AFTER: 30m
+  QUEUE_ADMIT_BATCH_SIZE: "10"
+  QUEUE_ADMISSION_DELAY: 1s
+  QUEUE_ADMISSION_INITIAL_DELAY: 1s
+  VNPAY_PAY_URL: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  NVIDIA_BASE_URL: https://integrate.api.nvidia.com/v1
+  NVIDIA_MODEL: meta/llama-3.1-8b-instruct
+  NVIDIA_REQUEST_TIMEOUT: 30s
+  ARTIST_PDF_MAX_BYTES: "20971520"
+  ARTIST_PDF_MAX_PAGES: "20"
+  ARTIST_PDF_MAX_EXTRACTED_CHARS: "40000"
+  ARTIST_BIO_MAX_PROMPT_CHARS: "20000"
+  ARTIST_PDF_EXTRACTION_TIMEOUT: 10s
+  SMTP_HOST: mailpit.mailpit.svc.cluster.local
+  SMTP_PORT: "1025"
+  SMTP_AUTH: "false"
+  SMTP_STARTTLS_ENABLE: "false"
+  QR_PRIVATE_KEY_PATH: /app/keys/qr-private.pem
+  QR_PUBLIC_KEY_PATH: /app/keys/qr-public.pem
+  API_INTERNAL_BASE_URL: http://api:8080
+  NEXT_PUBLIC_API_BASE_URL: /api
