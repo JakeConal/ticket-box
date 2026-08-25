@@ -1,63 +1,6 @@
 name: ticketbox-infra
 
 services:
-  jenkins:
-    build:
-      context: ./infra/jenkins
-    container_name: ticketbox-jenkins
-    restart: unless-stopped
-    user: root
-    ports:
-      - "${JENKINS_HTTP_PORT:-8081}:8080"
-      - "${JENKINS_AGENT_PORT:-50000}:50000"
-    environment:
-      JENKINS_OPTS: "--prefix=/"
-      TICKETBOX_APP_COMPOSE_PROJECT: "${TICKETBOX_APP_COMPOSE_PROJECT:-ticketbox}"
-    volumes:
-      - jenkins-home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - infra
-
-  sonarqube:
-    image: sonarqube:26.8.0.126808-community
-    container_name: ticketbox-sonarqube
-    restart: unless-stopped
-    stop_grace_period: 1h
-    depends_on:
-      sonarqube-db:
-        condition: service_healthy
-    environment:
-      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/${SONARQUBE_DB_NAME:-sonarqube}
-      SONAR_JDBC_USERNAME: ${SONARQUBE_DB_USER:-sonarqube}
-      SONAR_JDBC_PASSWORD: ${SONARQUBE_DB_PASSWORD:-sonarqube}
-    ports:
-      - "${SONARQUBE_HTTP_PORT:-9000}:9000"
-    volumes:
-      - sonarqube-data:/opt/sonarqube/data
-      - sonarqube-extensions:/opt/sonarqube/extensions
-      - sonarqube-logs:/opt/sonarqube/logs
-    networks:
-      - infra
-
-  sonarqube-db:
-    image: postgres:17-alpine
-    container_name: ticketbox-sonarqube-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${SONARQUBE_DB_NAME:-sonarqube}
-      POSTGRES_USER: ${SONARQUBE_DB_USER:-sonarqube}
-      POSTGRES_PASSWORD: ${SONARQUBE_DB_PASSWORD:-sonarqube}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SONARQUBE_DB_USER:-sonarqube} -d ${SONARQUBE_DB_NAME:-sonarqube}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - sonarqube-db-data:/var/lib/postgresql/data
-    networks:
-      - infra
-
   mailpit:
     image: axllent/mailpit:v1.22
     container_name: ticketbox-mailpit
@@ -69,36 +12,11 @@ services:
       - ticketbox
       - infra
 
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: ticketbox-ngrok
-    restart: unless-stopped
-    profiles:
-      - tunnel
-    command:
-      - http
-      - jenkins:8080
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
-    depends_on:
-      - jenkins
-    ports:
-      - "${NGROK_INSPECT_PORT:-4040}:4040"
-    networks:
-      - infra
-
   # Future observability services can live in this same stack, for example:
   # prometheus:
   # grafana:
   # loki:
   # promtail:
-
-volumes:
-  jenkins-home:
-  sonarqube-data:
-  sonarqube-extensions:
-  sonarqube-logs:
-  sonarqube-db-data:
 
 networks:
   infra:
