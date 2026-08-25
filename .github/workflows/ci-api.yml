@@ -32,10 +32,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
+
+      - name: Make gradlew executable
+        working-directory: api
+        run: chmod +x gradlew
 
       - name: Run tests
         working-directory: api
@@ -47,7 +51,7 @@ jobs:
 
       - name: SonarCloud analysis
         if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
-        uses: sonarsource/sonarqube-scan-action@v4
+        uses: sonarsource/sonarqube-scan-action@v6
         with:
           projectBaseDir: api
         env:
