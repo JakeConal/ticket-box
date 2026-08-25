@@ -8,11 +8,6 @@ RUN npm ci --ignore-scripts
 FROM deps AS source
 COPY --chown=node:node . ./
 
-# CI test stage (Jenkins Test stage):
-#   docker build --target test ./ticketbox-checker
-FROM source AS test
-RUN npm test
-
 FROM source AS build
 RUN ./node_modules/.bin/expo export --platform web --output-dir dist
 

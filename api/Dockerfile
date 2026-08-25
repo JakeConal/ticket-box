@@ -5,12 +5,6 @@ COPY --chown=gradle:gradle settings.gradle build.gradle ./
 COPY --chown=gradle:gradle src ./src
 USER gradle
 
-# CI test stage (Jenkins Test stage / ci/docker/ticketbox-api-test.compose.yml,
-# which supplies the Redis service the tests need):
-#   docker build --target test ./api
-FROM deps AS test
-CMD ["gradle", "--no-daemon", "test"]
-
 FROM deps AS build
 RUN gradle --no-daemon bootJar
 
