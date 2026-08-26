@@ -7,9 +7,10 @@ COPY --chown=node:node ticketbox-web/package.json ./ticketbox-web/package.json
 USER node
 RUN pnpm install --filter ticketbox-web... --frozen-lockfile --ignore-scripts
 
-FROM deps AS build
-WORKDIR /workspace
+FROM deps AS source
 COPY --chown=node:node ticketbox-web ./ticketbox-web
+
+FROM source AS build
 RUN pnpm --filter ticketbox-web build
 
 FROM node:22.21.1-alpine3.22 AS runner

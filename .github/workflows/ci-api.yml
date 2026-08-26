@@ -1,0 +1,98 @@
+name: CI - API
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "api/**"
+      - ".github/workflows/ci-api.yml"
+  pull_request:
+    paths:
+      - "api/**"
+      - ".github/workflows/ci-api.yml"
+
+env:
+  IMAGE_NAME: ticketbox-api
+
+jobs:
+  test-and-analyze:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Make gradlew executable
+        working-directory: api
+        run: chmod +x gradlew
+
+      - name: Run tests
+        working-directory: api
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          TEST_REDIS_HOST: localhost
+          TEST_REDIS_PORT: 6379
+        run: ./gradlew --no-daemon test jacocoTestReport
+
+      - name: SonarCloud analysis
+        if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+        uses: sonarsource/sonarqube-scan-action@v6
+        with:
+          projectBaseDir: api
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: SonarCloud quality gate check
+        if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        with:
+          scanMetadataReportFile: api/.scannerwork/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  build-and-publish:
+    needs: test-and-analyze
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value={{branch}}-{{sha}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

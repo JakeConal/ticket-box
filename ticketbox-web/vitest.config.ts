@@ -1,8 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 // Vitest setup for the Next.js app: jsdom gives components a browser-like DOM,
-// and coverage is emitted as LCOV so the SonarQube scanner can consume it
-// (see -Dsonar.javascript.lcov.reportPaths in ci/jenkins/Jenkinsfile.web).
+// and coverage is emitted as LCOV so the SonarCloud scanner can consume it
+// (see .github/workflows/ci-web.yml).
 export default defineConfig({
   // tsconfig sets jsx: "preserve" for Next.js; Vitest needs the automatic
   // runtime so JSX compiles without an explicit React import.

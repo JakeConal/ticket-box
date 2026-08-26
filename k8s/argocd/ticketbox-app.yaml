@@ -1,0 +1,22 @@
+# ArgoCD Application for the ticketbox app stack (ticketbox namespace).
+# Uses the local chart committed in this repo. Manual sync.
+# Apply after the required Secrets exist (see charts/ticketbox-app/README.md)
+# and charts/ticketbox-app is pushed:
+#   kubectl apply -f k8s/argocd/ticketbox-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ticketbox-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/JakeConal/ticket-box.git
+    targetRevision: main
+    path: charts/ticketbox-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ticketbox
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false

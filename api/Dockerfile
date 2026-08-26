@@ -1,9 +1,11 @@
-FROM gradle:9.6.1-jdk25-alpine AS build
+FROM gradle:9.6.1-jdk25-alpine AS deps
 WORKDIR /workspace
 RUN chown gradle:gradle /workspace
 COPY --chown=gradle:gradle settings.gradle build.gradle ./
 COPY --chown=gradle:gradle src ./src
 USER gradle
+
+FROM deps AS build
 RUN gradle --no-daemon bootJar
 
 FROM eclipse-temurin:25.0.1_8-jre-alpine

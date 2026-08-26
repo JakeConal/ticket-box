@@ -1,7 +1,0 @@
-FROM gradle:9.6.1-jdk25-alpine AS test
-WORKDIR /workspace
-RUN chown gradle:gradle /workspace
-COPY --chown=gradle:gradle settings.gradle build.gradle ./
-COPY --chown=gradle:gradle src ./src
-USER gradle
-CMD ["gradle", "--no-daemon", "test"]
