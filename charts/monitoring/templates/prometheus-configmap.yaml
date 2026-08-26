@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app.kubernetes.io/name: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      # api's own /actuator/prometheus endpoint (Micrometer auto-instrumentation).
+      - job_name: api
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets:
+              - {{ .Values.prometheus.scrapeTargets.api }}
+
+      # kube-state-metrics - pod/deployment/replicaset state across namespaces.
+      - job_name: kube-state-metrics
+        static_configs:
+          - targets:
+              - {{ .Values.prometheus.scrapeTargets.kubeStateMetrics }}
+
+      # Kubelet cAdvisor - node/container CPU and memory, reached through the
+      # apiserver's node proxy (no node-exporter DaemonSet needed on a
+      # single-node cluster - see design.md's "No node-exporter DaemonSet"
+      # decision). Requires the prometheus ServiceAccount's nodes/proxy
+      # RBAC grant and its mounted token/CA for bearer auth.
+      - job_name: kubelet-cadvisor
+        scheme: https
+        metrics_path: /api/v1/nodes/{{ .Values.prometheus.scrapeTargets.nodeName }}/proxy/metrics/cadvisor
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets:
+              - kubernetes.default.svc:443

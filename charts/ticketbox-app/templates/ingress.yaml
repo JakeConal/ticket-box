@@ -23,13 +23,6 @@ spec:
                 name: api
                 port:
                   number: {{ .Values.api.port }}
-          - path: /actuator
-            pathType: Prefix
-            backend:
-              service:
-                name: api
-                port:
-                  number: {{ .Values.api.port }}
           - path: /
             pathType: Prefix
             backend:

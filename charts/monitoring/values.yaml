@@ -1,0 +1,55 @@
+# Local chart for Prometheus + Grafana + kube-state-metrics, installed into
+# the monitoring namespace (openspec/changes/monitoring-setup).
+# Install:
+#   helm upgrade --install monitoring charts/monitoring -n monitoring --create-namespace
+
+prometheus:
+  image:
+    repository: prom/prometheus
+    tag: v3.13.2
+    pullPolicy: IfNotPresent
+  port: 9090
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # Static scrape targets - see design.md's "Static scrape targets, not
+  # kubernetes_sd_configs" decision. Update these by hand if a new service
+  # needs scraping. Node name is hardcoded to "minikube" (this project's
+  # single-node cluster) for the cAdvisor job's proxy path.
+  scrapeTargets:
+    api: api.ticketbox.svc.cluster.local:8080
+    kubeStateMetrics: kube-state-metrics.monitoring.svc.cluster.local:8080
+    nodeName: minikube
+
+grafana:
+  image:
+    repository: grafana/grafana
+    tag: "13.1.4"
+    pullPolicy: IfNotPresent
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+kubeStateMetrics:
+  image:
+    repository: registry.k8s.io/kube-state-metrics/kube-state-metrics
+    tag: v2.20.0
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+ingress:
+  enabled: true
+  host: monitoring.ticketbox.local

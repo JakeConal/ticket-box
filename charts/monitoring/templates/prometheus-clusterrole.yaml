@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+rules:
+  # Only what's needed to reach the kubelet cAdvisor endpoint through the
+  # apiserver proxy for the static node/container resource metrics target -
+  # see design.md's "Static scrape targets, not kubernetes_sd_configs"
+  # decision. No broader read access (Prometheus does not list/watch pods
+  # or services itself; that's kube-state-metrics' job).
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/metrics
+    verbs:
+      - get

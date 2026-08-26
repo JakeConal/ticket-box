@@ -47,7 +47,7 @@ public class SecurityConfig {
                                 response.setStatus(HttpServletResponse.SC_FORBIDDEN)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/error", "/api/health", "/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/error", "/api/health", "/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh").permitAll()
                         .requestMatchers(
                                 "/api/payments/vnpay/callback",
