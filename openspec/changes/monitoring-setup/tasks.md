@@ -37,9 +37,9 @@
 
 ## 7. ArgoCD Integration
 
-- [ ] 7.1 Create `k8s/argocd/monitoring.yaml` as an ArgoCD `Application` pointing at `charts/monitoring`, following the manual-sync pattern in `k8s/argocd/ticketbox-app.yaml`
-- [ ] 7.2 Apply and verify ArgoCD shows the `monitoring` Application synced and healthy, matching the live-deployed state from tasks 3-5
+- [x] 7.1 Create `k8s/argocd/monitoring.yaml` as an ArgoCD `Application` pointing at `charts/monitoring`, following the manual-sync pattern in `k8s/argocd/ticketbox-app.yaml`
+- [x] 7.2 Apply and verify ArgoCD shows the `monitoring` Application synced and healthy, matching the live-deployed state from tasks 3-5
 
 ## 8. Documentation
 
-- [ ] 8.1 Update `infra/README.md`'s "future observability" note to describe the now-implemented monitoring stack (namespace, how to reach Grafana, how to deploy/tear down)
+- [x] 8.1 Update `infra/README.md`'s "future observability" note to describe the now-implemented monitoring stack (namespace, how to reach Grafana, how to deploy/tear down)
