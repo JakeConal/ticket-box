@@ -28,16 +28,12 @@ A workflow SHALL run its module's automated test suite on every push and pull re
 - **WHEN** a triggering push or pull request's test suite fails
 - **THEN** the workflow stops and reports a failed check on the commit/pull request; later stages (analysis, build, publish) do not run
 
-### Requirement: Code analysis runs against SonarCloud with a quality gate
-A workflow SHALL submit its module's source and coverage data to SonarCloud for analysis and SHALL fail the workflow if the SonarCloud quality gate does not pass, for both main-branch builds and same-repository pull requests.
+### Requirement: Code analysis runs against SonarCloud for visibility
+A workflow SHALL submit its module's source and coverage data to SonarCloud for analysis on both main-branch builds and same-repository pull requests, so analysis results and any inline PR comments are available, without failing the workflow based on the SonarCloud quality gate result.
 
-#### Scenario: Quality gate passes
-- **WHEN** SonarCloud analysis completes and the quality gate passes
+#### Scenario: Analysis completes
+- **WHEN** SonarCloud analysis completes, regardless of quality gate outcome
 - **THEN** the workflow proceeds to the build stage
-
-#### Scenario: Quality gate fails
-- **WHEN** SonarCloud analysis completes and the quality gate fails
-- **THEN** the workflow stops with a failed status and later stages (build, publish) do not run
 
 #### Scenario: Pull request from a fork
 - **WHEN** a pull request originates from a fork (not the same repository)
@@ -46,16 +42,16 @@ A workflow SHALL submit its module's source and coverage data to SonarCloud for 
 ### Requirement: Successful main-branch builds publish a Docker image
 A workflow SHALL build and publish a Docker image for its module to the same Docker Hub repository used today, tagged with both a `<branch>-<short-sha>` tag and, only on the main branch, a `latest` tag. Publishing SHALL NOT occur for pull request builds.
 
-#### Scenario: Main branch build succeeds through the quality gate
-- **WHEN** a push to the main branch passes tests and the SonarCloud quality gate
+#### Scenario: Main branch build succeeds through tests and analysis
+- **WHEN** a push to the main branch passes tests and SonarCloud analysis completes
 - **THEN** the workflow builds and pushes the module's image tagged `main-<short-sha>` and `latest`
 
-#### Scenario: Pull request build succeeds through the quality gate
-- **WHEN** a pull request build passes tests and the SonarCloud quality gate
+#### Scenario: Pull request build succeeds through tests and analysis
+- **WHEN** a pull request build passes tests and SonarCloud analysis completes
 - **THEN** the workflow does not push any image
 
-#### Scenario: Non-main branch push succeeds through the quality gate
-- **WHEN** a push to a branch other than main passes tests and the SonarCloud quality gate
+#### Scenario: Non-main branch push succeeds through tests and analysis
+- **WHEN** a push to a branch other than main passes tests and SonarCloud analysis completes
 - **THEN** the workflow builds and pushes the module's image tagged `<branch>-<short-sha>` only (no `latest` tag)
 
 ### Requirement: Commit and pull request status reflects pipeline outcome

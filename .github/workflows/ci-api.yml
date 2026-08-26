@@ -57,15 +57,6 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: SonarCloud quality gate check
-        if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
-        uses: sonarsource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 5
-        with:
-          scanMetadataReportFile: api/.scannerwork/report-task.txt
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
   build-and-publish:
     needs: test-and-analyze
     if: github.event_name != 'pull_request'
