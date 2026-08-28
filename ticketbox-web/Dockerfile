@@ -11,6 +11,8 @@ FROM deps AS source
 COPY --chown=node:node ticketbox-web ./ticketbox-web
 
 FROM source AS build
+ARG API_PROXY_BASE_URL
+ENV API_PROXY_BASE_URL=$API_PROXY_BASE_URL
 RUN pnpm --filter ticketbox-web build
 
 FROM node:22.21.1-alpine3.22 AS runner
